@@ -1,7 +1,11 @@
+# Arquivos temporários do Python (compilados)
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
 *$py.class
+*.pyc
+*.pyo
+*.pyd
 
 # C extensions
 *.so
@@ -147,6 +151,8 @@ activemq-data/
 # SageMath parsed files
 *.sage.py
 
+# Ambientes Virtuais (onde ficam instaladas as bibliotecas localmente)
+# Arquivos de configuração local e chaves secretas (MUITO IMPORTANTE)
 # Environments
 .env
 .envrc
@@ -156,6 +162,9 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+*.env
+token.txt
+config.json
 
 # Spyder project settings
 .spyderproject
@@ -216,3 +225,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Arquivos do sistema operacional
+.DS_Store
+Thumbs.db
