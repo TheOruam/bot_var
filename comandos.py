@@ -88,6 +88,49 @@ def registrar_comandos(bot: TeleBot):
     # COMANDOS DE ADMINISTRADORES (BLOQUEADOS)
     # ==========================================
 
+    @bot.message_handler(commands=['ids'])
+    def comando_buscar_ids(message):
+        if not eh_admin(bot, message):
+            bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
+            return
+            
+        args = message.text.replace('/ids', '').strip()
+        
+        if not args:
+            # Caso envie apenas /ids, retorna instrução e links oficiais úteis
+            texto_links = (
+                "Para encontrar o ID de qualquer liga no mundo:\n\n"
+                "1. Pesquise diretamente aqui enviando: /ids <nome da liga ou pais>\n"
+                "   Exemplo: /ids Brasil  ou  /ids Serie A\n\n"
+                "2. Ou acesse a tabela oficial de IDs de Futebol da API:\n"
+                "   https://dashboard.api-sports.io/football/ids"
+            )
+            bot.reply_to(message, texto_links, disable_web_page_preview=True)
+            return
+            
+        bot.reply_to(message, f"🔍 Pesquisando ligas relacionadas a '{args}'...")
+        
+        from analisador import buscar_ids_ligas
+        resultados = buscar_ids_ligas(args)
+        
+        if not resultados:
+            bot.send_message(
+                message.chat.id, 
+                f"❌ Nenhuma liga encontrada para a busca '{args}'.\n"
+                "Dica: Tente termos em ingles ou nomes oficiais (ex: Brazil, Cup, Serie A)."
+            )
+            return
+            
+        # Formata e limita os resultados em até 15 linhas para não estourar o limite de caracteres do Telegram
+        linhas = ["RESULTADO DA BUSCA DE LIGAS:\n"]
+        for r in resultados[:15]:
+            linhas.append(f"• ID: {r['id']} | {r['nome']} ({r['pais']})")
+            
+        if len(resultados) > 15:
+            linhas.append("\n(Exibindo as primeiras 15 correspondencias. Seja mais especifico na busca se nao encontrar o que procura.)")
+            
+        bot.send_message(message.chat.id, "\n".join(linhas))
+        
     @bot.message_handler(commands=['addliga'])
     def comando_add_liga(message):
         if not eh_admin(bot, message):
