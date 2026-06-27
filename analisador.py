@@ -281,7 +281,7 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
 # SEÇÃO 3: CONTROLE DE LIGAS E EXIBIÇÃO DE ELENCOS E ESTATÍSTICAS
 # =====================================================================
 
-LIGAS_MONITORADAS = [71, 39, 140, 2]
+LIGAS_MONITORADAS = [71, 72, 73, 1, 39, 140, 2]
 JOGOS_ANALISADOS = set()
 ULTIMO_DIA_CRONOGRAMA = ""
 
