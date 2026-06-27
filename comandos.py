@@ -180,7 +180,8 @@ def registrar_comandos(bot: TeleBot):
         bot.send_message(
             chat_id=message.chat.id, 
             text=analise_final,
-            message_thread_id=message.message_thread_id
+            message_thread_id=message.message_thread_id,
+            parse_mode="Markdown"  # <--- Adicionamos isto para ativar os links clicáveis!
         )
 
     # =====================================================================
