@@ -271,7 +271,22 @@ def registrar_comandos(bot: TeleBot):
                 message_thread_id=message.message_thread_id
             )
             
-            from analisador import obter_jogos_do_dia, gerar_cronograma_diario_ia
+            # Executa uma busca rápida direta para diagnosticar a API
+            headers = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': os.getenv("API_FOOTBALL_KEY")}
+            from datetime import datetime, timezone, timedelta
+            agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
+            hoje_brt = agora_brt.strftime('%Y-%m-%d')
+            
+            try:
+                res_cru = requests.get(f"https://v3.football.api-sports.io/fixtures?date={hoje_brt}", headers=headers, timeout=12)
+                dados_crus = res_cru.json()
+                total_mundo = len(dados_crus.get("response", []))
+                erros_api = dados_crus.get("errors")
+            except Exception as e:
+                total_mundo = 0
+                erros_api = str(e)
+            
+            from analisador import obter_jogos_do_dia, gerar_cronograma_diario_ia, listar_ligas_monitoradas
             jogos = obter_jogos_do_dia()
             
             if jogos:
@@ -287,9 +302,18 @@ def registrar_comandos(bot: TeleBot):
                     message_thread_id=message.message_thread_id
                 )
             else:
+                # Painel de diagnóstico que te dirá exatamente o que está acontecendo
+                msg_diagnostico = (
+                    "ℹ️ Nenhuma partida encontrada hoje nas suas ligas monitoradas.\n\n"
+                    "🔍 PAINEL DE DIAGNÓSTICO DA API:\n"
+                    f"• Data consultada: {hoje_brt}\n"
+                    f"• Total de jogos no mundo hoje na API: {total_mundo}\n"
+                    f"• Erros retornados pela API: {erros_api if erros_api else 'Nenhum'}\n"
+                    f"• Ligas monitoradas ativas na memória: {listar_ligas_monitoradas()}"
+                )
                 bot.send_message(
                     chat_id=message.chat.id, 
-                    text="ℹ️ Nenhuma partida agendada para hoje nas ligas monitoradas. Nada a enviar.",
+                    text=msg_diagnostico,
                     message_thread_id=message.message_thread_id
                 )
 
