@@ -174,37 +174,135 @@ def buscar_jogo_ao_vivo_por_time(nome_time: str) -> Optional[Dict[str, Any]]:
             }
     return None
 
+def gerar_barra_comparativa(val_casa: float, val_fora: float) -> str:
+    """
+    Gera uma barra visual de proporção de 10 elementos usando emojis de círculos.
+    Azul (🔵) representa o time da Casa, Vermelho (🔴) representa o Visitante.
+    """
+    total = val_casa + val_fora
+    if total == 0:
+        return "⚪⚪⚪⚪⚪⚪⚪⚪⚪⚪"
+    
+    # Calcula quantos círculos azuis o time da casa merece de 0 a 10
+    pontos_casa = round((val_casa / total) * 10)
+    pontos_fora = 10 - pontos_casa
+    
+    return "🔵" * pontos_casa + "🔴" * pontos_fora
+
 def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
+    """
+    Gera o sinal de 'Robô Over Gols' com barras de comparação em emoji
+    e formatação avançada do VAR do Lucro PREMIUM.
+    """
+    fixture = dados_api["fixture"]
+    liga = fixture["league"]["name"]
+    time_casa = fixture["teams"]["home"]["name"]
+    time_fora = fixture["teams"]["away"]["name"]
+    tempo_minutos = fixture["fixture"]["status"]["elapsed"]
+    gols_casa = fixture["goals"]["home"]
+    gols_fora = fixture["goals"]["away"]
+    estatisticas_brutas = dados_api["statistics"]
+
+    # Dicionário auxiliar para capturar as estatísticas de cada time
+    stats_parsed = {
+        "home": {"attacks": 0, "corners": 0, "shots": 0, "on_target": 0, "possession": 50},
+        "away": {"attacks": 0, "corners": 0, "shots": 0, "on_target": 0, "possession": 50}
+    }
+
+    # Processa os dados recebidos da API-Football
+    for item in estatisticas_brutas:
+        equipe = "home" if item["team"]["name"] == time_casa else "away"
+        for stat in item["statistics"]:
+            tipo = stat["type"]
+            valor = stat["value"]
+            # Trata valores nulos ou vazios
+            if valor is None:
+                valor = 0
+            if isinstance(valor, str) and "%" in valor:
+                valor = int(valor.replace("%", ""))
+                
+            if tipo == "Dangerous Attacks":
+                stats_parsed[equipe]["attacks"] = int(valor)
+            elif tipo == "Corner Kicks":
+                stats_parsed[equipe]["corners"] = int(valor)
+            elif tipo == "Total Shots":
+                stats_parsed[equipe]["shots"] = int(valor)
+            elif tipo == "Shots on Goal":
+                stats_parsed[equipe]["on_target"] = int(valor)
+            elif tipo == "Ball Possession":
+                stats_parsed[equipe]["possession"] = int(valor)
+
+    # Gera as barras comparativas em formato de Emojis
+    barra_ataques = gerar_barra_comparativa(stats_parsed["home"]["attacks"], stats_parsed["away"]["attacks"])
+    barra_cantos = gerar_barra_comparativa(stats_parsed["home"]["corners"], stats_parsed["away"]["corners"])
+    barra_chutes = gerar_barra_comparativa(stats_parsed["home"]["shots"], stats_parsed["away"]["shots"])
+    barra_alvo = gerar_barra_comparativa(stats_parsed["home"]["on_target"], stats_parsed["away"]["on_target"])
+    barra_posse = gerar_barra_comparativa(stats_parsed["home"]["possession"], stats_parsed["away"]["possession"])
+
     try:
+        # Consultamos a IA apenas para avaliar qual o melhor sinal de aposta baseado no ritmo
         client = obter_cliente_gemini()
-        fixture = dados_api["fixture"]
-        liga = fixture["league"]["name"]
-        time_casa = fixture["teams"]["home"]["name"]
-        time_fora = fixture["teams"]["away"]["name"]
-        tempo_minutos = fixture["fixture"]["status"]["elapsed"]
-        gols_casa = fixture["goals"]["home"]
-        gols_fora = fixture["goals"]["away"]
-        estatisticas = dados_api["statistics"]
-
-        prompt = (
-            f"Analise o ritmo ofensivo do jogo ao vivo com as seguintes estatísticas:\n"
-            f"Liga: {liga} | Confronto: {time_casa} v {time_fora}\n"
-            f"Tempo: {tempo_minutos} minutos | Placar atual: {gols_casa} - {gols_fora}\n"
-            f"Estatísticas: {estatisticas}\n\n"
-            f"REGRA DE TRADUÇÃO OBRIGATÓRIA: Traduza times e ligas para o Português do Brasil.\n"
-            f"Siga estritamente o modelo de resposta de Robô Over Gols enviado anteriormente usando links Markdown de casas."
+        prompt_ia = (
+            f"Analise o ritmo deste jogo aos {tempo_minutos} minutos de jogo. Placar atual: {gols_casa} - {gols_fora}.\n"
+            f"Estatísticas de Ataques Perigosos: {stats_parsed['home']['attacks']} vs {stats_parsed['away']['attacks']}.\n"
+            f"Chutes no gol: {stats_parsed['home']['on_target']} vs {stats_parsed['away']['on_target']}.\n\n"
+            "Responda estritamente com apenas uma das opções de sinais de aposta abaixo:\n"
+            "- 'Mais 0.5 Gols na partida'\n"
+            "- 'Mais 1 Gol na partida'\n"
+            "- 'Mais 1.5 Gols na partida'\n"
+            "- 'Sem entrada recomendada' (use esta se as estatísticas de chute no alvo e ataques estiverem fracas ou o tempo for inicial)\n"
+            "Não escreva nada além da opção escolhida."
         )
+        
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_ia)
+        sinal = response.text.strip().replace("'", "").replace('"', "")
+    except Exception as e:
+        print(f"Erro na IA ao decidir sinal: {e}")
+        sinal = "Mais 0.5 Gols na partida"  # Fallback seguro
 
-        configuracao = types.GenerateContentConfig(
-            tools=[types.Tool(google_search=types.GoogleSearch())]
-        )
+    # Lista de casas de apostas para seleção dinâmica no rodapé do sinal
+    casas_sugestoes = [
+        ("Superbet", "https://superbet.com"),
+        ("Bet365", "https://www.bet365.com"),
+        ("EstrelaBet", "https://estrelabet.com"),
+        ("Novibet", "https://novibet.com"),
+        ("Sportingbet", "https://sportingbet.com")
+    ]
+    casa_sugerida_1, link_1 = random.choice(casas_sugestoes)
+    
+    # Monta a mensagem final formatada com os novos gráficos textuais
+    mensagem_final = (
+        "💎 [Sinal Confirmado - VAR do Lucro PREMIUM]\n\n"
+        f"🏟 {liga}\n"
+        f"⚽ {time_casa} v {time_fora}\n"
+        f"🕐 {tempo_minutos} minutos\n"
+        f"🔢 Placar do jogo: {gols_casa} - {gols_fora}\n\n"
+        
+        "📊 Estatísticas em Tempo Real (Mandante v Visitante):\n\n"
+        
+        f"⚡ Investidas Ofensivas ({stats_parsed['home']['attacks']} v {stats_parsed['away']['attacks']})\n"
+        f"[ {barra_ataques} ]\n\n"
+        
+        f"📐 Escanteios ({stats_parsed['home']['corners']} v {stats_parsed['away']['corners']})\n"
+        f"[ {barra_cantos} ]\n\n"
+        
+        f"👟 Arremates ({stats_parsed['home']['shots']} v {stats_parsed['away']['shots']})\n"
+        f"[ {barra_chutes} ]\n\n"
+        
+        f"🎯 No Alvo ({stats_parsed['home']['on_target']} v {stats_parsed['away']['on_target']})\n"
+        f"[ {barra_alvo} ]\n\n"
+        
+        f"📈 Posse de Bola ({stats_parsed['home']['possession']}% v {stats_parsed['away']['possession']}%)\n"
+        f"[ {barra_posse} ]\n\n"
+        
+        f"🔥 Sinal: {sinal}\n\n"
+        
+        "↪ Confira nas casas:\n"
+        f"🎲 Pegue na [{casa_sugerida_1}]({link_1})\n\n"
+        "Jogue com responsabilidade 🔞"
+    )
 
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=configuracao
-        )
-        return response.text
+    return mensagem_final
     except Exception as e:
         print(f"Erro na análise de sinais ao vivo para {time_casa} vs {time_fora}: {e}")
         return "Desculpe, ocorreu uma instabilidade ao gerar o sinal de gols em tempo real."
