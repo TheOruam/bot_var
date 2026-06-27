@@ -30,7 +30,6 @@ def verificar_sala(message, id_sala_permitida: int) -> bool:
     if message.chat.type == "private":
         return True
     
-    # Pega o ID do tópico (se for None, define como 0)
     thread_id = message.message_thread_id
     if thread_id is None:
         thread_id = 0
@@ -55,7 +54,6 @@ def registrar_comandos(bot: TeleBot):
     # =====================================================================
     @bot.message_handler(commands=['prejogo'])
     def comando_pre_jogo(message):
-        # Filtro de sala
         if not verificar_sala(message, ID_PRE_JOGO):
             bot.reply_to(message, "⚠️ Este comando so pode ser utilizado na sala Pré-Jogo.")
             return
@@ -78,19 +76,30 @@ def registrar_comandos(bot: TeleBot):
                 break
                 
         if not jogo_encontrado:
-            bot.send_message(message.chat.id, f"❌ Não encontrei nenhuma partida para hoje com o nome '{args}'.")
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=f"❌ Não encontrei nenhuma partida para hoje com o nome '{args}'.",
+                message_thread_id=message.message_thread_id
+            )
             return
             
-        bot.send_message(message.chat.id, "🧠 Gerando Relatório de Inteligência VAR do Lucro...")
+        bot.send_message(
+            chat_id=message.chat.id, 
+            text="🧠 Gerando Relatório de Inteligência VAR do Lucro...",
+            message_thread_id=message.message_thread_id
+        )
         relatorio = gerar_relatorio_pre_jogo(jogo_encontrado)
-        bot.send_message(message.chat.id, relatorio)
+        bot.send_message(
+            chat_id=message.chat.id, 
+            text=relatorio,
+            message_thread_id=message.message_thread_id
+        )
 
     # =====================================================================
     # COMANDO: AO VIVO (APENAS NA SALA SINAIS AO VIVO)
     # =====================================================================
     @bot.message_handler(commands=['aovivo'])
     def comando_ao_vivo(message):
-        # Filtro de sala
         if not verificar_sala(message, ID_AO_VIVO):
             bot.reply_to(message, "⚠️ Este comando so pode ser utilizado na sala de Sinais Ao Vivo.")
             return
@@ -104,12 +113,24 @@ def registrar_comandos(bot: TeleBot):
         dados_jogo = buscar_jogo_ao_vivo_por_time(args)
         
         if not dados_jogo:
-            bot.send_message(message.chat.id, f"❌ Nenhuma partida ao vivo encontrada para '{args}' no momento.")
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=f"❌ Nenhuma partida ao vivo encontrada para '{args}' no momento.",
+                message_thread_id=message.message_thread_id
+            )
             return
             
-        bot.send_message(message.chat.id, "📊 Partida encontrada! Calculando probabilidades e notícias...")
+        bot.send_message(
+            chat_id=message.chat.id, 
+            text="📊 Partida encontrada! Calculando probabilidades e notícias...",
+            message_thread_id=message.message_thread_id
+        )
         analise_final = analisar_ao_vivo_e_formatar(dados_jogo)
-        bot.send_message(message.chat.id, analise_final)
+        bot.send_message(
+            chat_id=message.chat.id, 
+            text=analise_final,
+            message_thread_id=message.message_thread_id
+        )
 
     # =====================================================================
     # COMANDOS DE ADMINS - GRUPO 1: APENAS NA "MESA DOS ADMINS"
@@ -127,7 +148,11 @@ def registrar_comandos(bot: TeleBot):
         comando = message.text.split()[0].replace('/', '').strip().lower()
 
         if comando == 'update':
-            bot.send_message(message.chat.id, "Iniciando auto-diagnostico dos sistemas...")
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="Iniciando auto-diagnostico dos sistemas...",
+                message_thread_id=message.message_thread_id
+            )
             status_gemini = "OK"
             status_api_football = "OK"
             
@@ -156,7 +181,11 @@ def registrar_comandos(bot: TeleBot):
                 f"Conexao API-Football: {status_api_football}\n\n"
                 "Se todos os itens estiverem OK, seu bot esta operando em perfeito estado na nuvem."
             )
-            bot.send_message(message.chat.id, relatorio_update)
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=relatorio_update,
+                message_thread_id=message.message_thread_id
+            )
 
         elif comando == 'addliga':
             try:
@@ -182,7 +211,11 @@ def registrar_comandos(bot: TeleBot):
 
         elif comando == 'verligas':
             from analisador import listar_ligas_monitoradas
-            bot.send_message(message.chat.id, f"LIGAS ATIVAS NO MONITORAMENTO DO VAR:\n\nIDs Monitorados: {listar_ligas_monitoradas()}")
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=f"LIGAS ATIVAS NO MONITORAMENTO DO VAR:\n\nIDs Monitorados: {listar_ligas_monitoradas()}",
+                message_thread_id=message.message_thread_id
+            )
 
         elif comando == 'ids':
             try:
@@ -193,10 +226,18 @@ def registrar_comandos(bot: TeleBot):
                     from analisador import buscar_ids_ligas
                     res = buscar_ids_ligas(arg_busca)
                     if not res:
-                        bot.send_message(message.chat.id, "Nenhuma liga encontrada.")
+                        bot.send_message(
+                            chat_id=message.chat.id, 
+                            text="Nenhuma liga encontrada.",
+                            message_thread_id=message.message_thread_id
+                        )
                     else:
                         linhas = [f"• ID: {r['id']} | {r['nome']} ({r['pais']})" for r in res[:15]]
-                        bot.send_message(message.chat.id, "RESULTADO DA BUSCA DE LIGAS:\n\n" + "\n".join(linhas))
+                        bot.send_message(
+                            chat_id=message.chat.id, 
+                            text="RESULTADO DA BUSCA DE LIGAS:\n\n" + "\n".join(linhas),
+                            message_thread_id=message.message_thread_id
+                        )
             except Exception as e:
                 bot.reply_to(message, f"Erro ao buscar IDs: {e}")
 
@@ -206,12 +247,10 @@ def registrar_comandos(bot: TeleBot):
     # =====================================================================
     @bot.message_handler(commands=['bemvindo', 'bomdia', 'green', 'red', 'resenha'])
     def comandos_interacao_admin(message):
-        # 1. Verifica se o usuário é administrador
         if not eh_admin(bot, message):
             bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
             return
 
-        # 2. Garante que o comando foi digitado em uma das 4 salas conhecidas do fórum
         thread_id = message.message_thread_id
         if thread_id is not None:
             thread_id = int(thread_id)
@@ -222,44 +261,60 @@ def registrar_comandos(bot: TeleBot):
         comando = message.text.split()[0].replace('/', '').strip().lower()
 
         if comando == 'bemvindo':
-            bot.send_message(message.chat.id, (
-                "Atencao cabine do VAR! Temos um novo integrante na mesa de operacoes!\n\n"
-                "Analisando o perfil do novato em nossa tela de transmissao...\n"
-                "Checando dados... Verificando batimentos cardiacos... Analisando a carteira...\n\n"
-                "DECISAO CONFIRMADA NO MONITOR:\n"
-                "Cadastro aprovado com sucesso! Seja muito bem-vindo ao VAR do Lucro!\n"
-                "Prepare sua planilha, ajuste sua stake e junte-se aos operadores profissionais de elite."
-            ))
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=(
+                    "Atencao cabine do VAR! Temos um novo integrante na mesa de operacoes!\n\n"
+                    "Analisando o perfil do novato em nossa tela de transmissao...\n"
+                    "Checando dados... Verificando batimentos cardiacos... Analisando a carteira...\n\n"
+                    "DECISAO CONFIRMADA NO MONITOR:\n"
+                    "Cadastro aprovado com sucesso! Seja muito bem-vindo ao VAR do Lucro!\n"
+                    "Prepare sua planilha, ajuste sua stake e junte-se aos operadores profissionais de elite."
+                ),
+                message_thread_id=message.message_thread_id
+            )
 
         elif comando == 'bomdia':
-            bot.send_message(message.chat.id, (
-                "Bom dia, mercado! Os monitores ja estao ligados e as APIs aquecidas!\n\n"
-                "Hoje o dia promete muitas oportunidades na nossa mesa de analise. "
-                "Lembre-se das regras de ouro para hoje:\n"
-                "1. Proteja seu capital (stake controlada).\n"
-                "2. Estude os relatorios antes de clicar.\n"
-                "3. Mantenha a calma de um monge, ganhando ou perdendo.\n\n"
-                "Que o valor esperado positivo esteja conosco. Bons investimentos a todos!"
-            ))
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=(
+                    "Bom dia, mercado! Os monitores ja estao ligados e as APIs aquecidas!\n\n"
+                    "Hoje o dia promete muitas oportunidades na nossa mesa de analise. "
+                    "Lembre-se das regras de ouro para hoje:\n"
+                    "1. Proteja seu capital (stake controlada).\n"
+                    "2. Estude os relatorios antes de clicar.\n"
+                    "3. Mantenha a calma de um monge, ganhando ou perdendo.\n\n"
+                    "Que o valor esperado positivo esteja conosco. Bons investimentos a todos!"
+                ),
+                message_thread_id=message.message_thread_id
+            )
 
         elif comando == 'green':
-            bot.send_message(message.chat.id, (
-                "EXPLODIU O GREEN DA NOSSA ANALISE!\n\n"
-                "A analise cirurgica do nosso relatorio bateu exatamente com o andamento do jogo!\n"
-                "Quem seguiu a gestao de banca e entrou na recomendacao do VAR do Lucro acabou de colocar dinheiro no bolso!\n"
-                "O mercado tentou segurar, mas a nossa leitura tecnica foi implacavel.\n"
-                "Parabens aos lucros coletados! Comemore sem perder o foco na proxima operacao."
-            ))
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=(
+                    "EXPLODIU O GREEN DA NOSSA ANALISE!\n\n"
+                    "A analise cirurgica do nosso relatorio bateu exatamente com o andamento do jogo!\n"
+                    "Quem seguiu a gestao de banca e entrou na recomendacao do VAR do Lucro acabou de colocar dinheiro no bolso!\n"
+                    "O mercado tentou segurar, mas a nossa leitura tecnica foi implacavel.\n"
+                    "Parabens aos lucros coletados! Comemore sem perder o foco na proxima operacao."
+                ),
+                message_thread_id=message.message_thread_id
+            )
 
         elif comando == 'red':
-            bot.send_message(message.chat.id, (
-                "Atenção operadores: Red detectado.\n\n"
-                "O futebol tem variaveis imprevisiveis que nenhuma estatistica consegue blindar 100 por cento.\n"
-                "Mas e aqui que se separam os amadores dos profissionais:\n"
-                "Seguir estritamente a nossa stake de 1 a 3 por cento garante que esse tropeço nao afete sua saude financeira.\n"
-                "Nao tente recuperar o valor perdido imediatamente com apostas desesperadas sem estudo.\n"
-                "Mantenha o controle emocional. A longo prazo, a consistencia matematica sempre vence."
-            ))
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=(
+                    "Atenção operadores: Red detectado.\n\n"
+                    "O futebol tem variaveis imprevisiveis que nenhuma estatistica consegue blindar 100 por cento.\n"
+                    "Mas e aqui que se separam os amadores dos profissionais:\n"
+                    "Seguir estritamente a nossa stake de 1 a 3 por cento garante que esse tropeço nao afete sua saude financeira.\n"
+                    "Nao tente recuperar o valor perdido imediatamente com apostas desesperadas sem estudo.\n"
+                    "Mantenha o controle emocional. A longo prazo, a consistencia matematica sempre vence."
+                ),
+                message_thread_id=message.message_thread_id
+            )
 
         elif comando == 'resenha':
             curiosidades = [
@@ -267,7 +322,11 @@ def registrar_comandos(bot: TeleBot):
                 "Na Inglaterra, o jogador Lee Todd levou o cartao vermelho mais rapido da historia: apenas 2 segundos de jogo! Ao ouvir o apito inicial do juiz perto do seu ouvido, ele exclamou: Caramba, isso foi muito alto! E foi expulso.",
                 "Em 1945, um jogo entre Arsenal e Dynamo de Moscou ocorreu sob uma névoa tao densa que ninguem enxergava nada. O Dynamo fez substituicoes sem ninguem perceber e acabou jogando com 15 jogadores em campo por quase meia hora!"
             ]
-            bot.send_message(message.chat.id, "CURIOSIDADE DO VAR DO LUCRO\n\n" + random.choice(curiosidades))
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="CURIOSIDADE DO VAR DO LUCRO\n\n" + random.choice(curiosidades),
+                message_thread_id=message.message_thread_id
+            )
 
     # =====================================================================
     # MONITORAMENTO AUTOMÁTICO DE NOVOS MEMBROS (ENVIO NA SALA RESENHA)
