@@ -10,6 +10,30 @@ from typing import Optional, Dict, Any, List
 API_FOOTBALL_KEY = os.getenv("API_FOOTBALL_KEY")
 API_FOOTBALL_URL = "https://v3.football.api-sports.io"
 
+# Lista global em memória com os IDs das principais ligas para iniciar o Bot.
+# Exemplos: 71 = Brasileirão Série A, 39 = Premier League, 140 = La Liga, 2 = Champions League
+LIGAS_MONITORADAS = [71, 39, 140, 2]
+
+def adicionar_liga_monitorada(league_id: int) -> bool:
+    """Adiciona um ID de liga à lista de monitoramento local."""
+    global LIGAS_MONITORADAS
+    if league_id not in LIGAS_MONITORADAS:
+        LIGAS_MONITORADAS.append(league_id)
+        return True
+    return False
+
+def remover_liga_monitorada(league_id: int) -> bool:
+    """Remove um ID de liga da lista de monitoramento local."""
+    global LIGAS_MONITORADAS
+    if league_id in LIGAS_MONITORADAS:
+        LIGAS_MONITORADAS.remove(league_id)
+        return True
+    return False
+
+def listar_ligas_monitoradas() -> List[int]:
+    """Retorna a lista atual de ligas sendo monitoradas."""
+    return LIGAS_MONITORADAS
+
 def obter_cliente_gemini() -> genai.Client:
     """
     Inicializa de forma segura o cliente da API do Google GenAI.
@@ -25,8 +49,9 @@ def obter_cliente_gemini() -> genai.Client:
 
 def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     """
-    Consulta a API-Football para buscar a lista de todos os jogos do dia atual.
-    Utilizado pelo agendador de tarefas para programar as análises.
+    Busca todas as partidas agendadas para o dia e filtra localmente, 
+    retornando APENAS os jogos das ligas monitoradas pelos administradores.
+    Economiza requisições HTTP da API.
     """
     if not API_FOOTBALL_KEY:
         print("Erro: API_FOOTBALL_KEY não foi configurada.")
@@ -39,9 +64,19 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     hoje = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     
     try:
+        # 1 única requisição para obter todas as partidas do dia inteiro no planeta
         resposta = requests.get(f"{API_FOOTBALL_URL}/fixtures?date={hoje}", headers=headers, timeout=15)
-        dados = resposta.json()
-        return dados.get("response", [])
+        todos_jogos = resposta.json().get("response", [])
+        
+        # Filtro em memória eficiente para poupar requisições adicionais
+        jogos_filtrados = [
+            jogo for jogo in todos_jogos 
+            if jogo["league"]["id"] in LIGAS_MONITORADAS
+        ]
+        
+        print(f"Total de jogos hoje: {len(todos_jogos)} | Filtrados para monitoramento: {len(jogos_filtrados)}")
+        return jogos_filtrados
+        
     except Exception as e:
         print(f"Erro ao buscar partidas agendadas para o dia de hoje: {e}")
         return []
