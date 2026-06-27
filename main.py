@@ -5,7 +5,7 @@ import threading
 from flask import Flask
 import telebot
 from comandos import registrar_comandos
-from analisador import verificar_e_enviar_pre_jogos
+from analisador import verificar_e_enviar_pre_jogos, verificar_e_enviar_cronograma
 
 app = Flask(__name__)
 
@@ -22,18 +22,22 @@ bot = telebot.TeleBot(TOKEN)
 registrar_comandos(bot)
 
 # ==========================================
-# AGENDADOR AUTOMÁTICO (PRÉ-JOGO)
+# AGENDADOR AUTOMÁTICO (PRÉ-JOGO E CRONOGRAMAS)
 # ==========================================
 
 def tarefa_agendada_loop():
+    # Aguarda 30 segundos ao iniciar para estabilizar as conexões de rede
     time.sleep(30)
     while True:
         try:
-            # Chama a função unificada de varredura
+            # 1. Verifica se um novo dia em Brasília (UTC-3) começou para enviar o cronograma das 00:00
+            verificar_e_enviar_cronograma(bot)
+            
+            # 2. Varre as partidas que iniciam nas próximas horas (1 hora antes)
             verificar_e_enviar_pre_jogos(bot)
         except Exception as e:
             print(f"Erro no loop do agendador automático: {e}")
-        time.sleep(600)
+        time.sleep(600)  # Aguarda 10 minutos para a próxima varredura
 
 # ==========================================
 # INICIALIZAÇÃO
