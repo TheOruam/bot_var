@@ -5,7 +5,7 @@ import requests
 from telebot import TeleBot
 from analisador import buscar_jogo_ao_vivo_por_time, analisar_ao_vivo_e_formatar, obter_jogos_do_dia, gerar_relatorio_pre_jogo, obter_cliente_gemini
 
-# Captura os IDs das salas do ambiente (padrão 0 caso não configurados para não quebrar)
+# Captura os IDs das salas do ambiente (padrão 0 caso não configurados)
 ID_PRE_JOGO = int(os.getenv("TOPICO_PRE_JOGO", "0"))
 ID_AO_VIVO = int(os.getenv("TOPICO_AO_VIVO", "0"))
 ID_RESENHA = int(os.getenv("TOPICO_RESENHA", "0"))
@@ -50,9 +50,9 @@ def registrar_comandos(bot: TeleBot):
         )
         bot.reply_to(message, texto)
 
-    # ==========================================
+    # =====================================================================
     # COMANDO: PRÉ-JOGO (APENAS NA SALA PRÉ-JOGO)
-    # ==========================================
+    # =====================================================================
     @bot.message_handler(commands=['prejogo'])
     def comando_pre_jogo(message):
         # Filtro de sala
@@ -85,9 +85,9 @@ def registrar_comandos(bot: TeleBot):
         relatorio = gerar_relatorio_pre_jogo(jogo_encontrado)
         bot.send_message(message.chat.id, relatorio)
 
-    # ==========================================
+    # =====================================================================
     # COMANDO: AO VIVO (APENAS NA SALA SINAIS AO VIVO)
-    # ==========================================
+    # =====================================================================
     @bot.message_handler(commands=['aovivo'])
     def comando_ao_vivo(message):
         # Filtro de sala
@@ -111,19 +111,17 @@ def registrar_comandos(bot: TeleBot):
         analise_final = analisar_ao_vivo_e_formatar(dados_jogo)
         bot.send_message(message.chat.id, analise_final)
 
-# =====================================================================
+    # =====================================================================
     # COMANDOS DE ADMINS - GRUPO 1: APENAS NA "MESA DOS ADMINS"
     # =====================================================================
     @bot.message_handler(commands=['update', 'addliga', 'remliga', 'verligas', 'ids'])
     def comandos_criticos_admin(message):
-        # 1. Verifica se o usuário é administrador
         if not eh_admin(bot, message):
             bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
             return
 
-        # 2. Restringe a execução estritamente para a Mesa dos Admins
         if not verificar_sala(message, ID_ADMINS):
-            bot.reply_to(message, "⚠️ Este comando de configuracao so e aceito dentro da sala Mesa dos Admins.")
+            bot.reply_to(message, "⚠️ Este comando de configuração só é aceito dentro da sala Mesa dos Admins.")
             return
 
         comando = message.text.split()[0].replace('/', '').strip().lower()
@@ -269,9 +267,9 @@ def registrar_comandos(bot: TeleBot):
                 "Na Inglaterra, o jogador Lee Todd levou o cartao vermelho mais rapido da historia: apenas 2 segundos de jogo! Ao ouvir o apito inicial do juiz perto do seu ouvido, ele exclamou: Caramba, isso foi muito alto! E foi expulso.",
                 "Em 1945, um jogo entre Arsenal e Dynamo de Moscou ocorreu sob uma névoa tao densa que ninguem enxergava nada. O Dynamo fez substituicoes sem ninguem perceber e acabou jogando com 15 jogadores em campo por quase meia hora!"
             ]
-            bot.send_message(message.chat.id, "CURIOSIDADE DO VAR DO LUCRO\n\n" + random.choice(curiosidades))IDs: {e}")
+            bot.send_message(message.chat.id, "CURIOSIDADE DO VAR DO LUCRO\n\n" + random.choice(curiosidades))
 
-# =====================================================================
+    # =====================================================================
     # MONITORAMENTO AUTOMÁTICO DE NOVOS MEMBROS (ENVIO NA SALA RESENHA)
     # =====================================================================
     @bot.message_handler(content_types=['new_chat_members'])
@@ -280,7 +278,6 @@ def registrar_comandos(bot: TeleBot):
         Detecta automaticamente a entrada de novos usuários no grupo 
         e envia a mensagem de acolhimento do VAR na sala de Resenha.
         """
-        # Se a sala de resenha não estiver configurada no Render, evita o envio
         if not ID_RESENHA:
             return
 
@@ -294,7 +291,6 @@ def registrar_comandos(bot: TeleBot):
         )
 
         try:
-            # Envia automaticamente a mensagem direcionando para a sala de resenha
             bot.send_message(
                 chat_id=message.chat.id,
                 text=texto_boas_vindas,
