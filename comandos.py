@@ -76,7 +76,8 @@ def registrar_comandos(bot: TeleBot):
                 "• /addliga <ID>: Adiciona um campeonato ao monitoramento ativo.\n"
                 "• /remliga <ID>: Remove um campeonato do monitoramento.\n"
                 "• /verligas: Mostra os IDs das ligas monitoradas no momento.\n"
-                "• /scan: Força a varredura de jogos para a proxima hora imediatamente."
+                "• /scan: Força a varredura de jogos para a proxima hora imediatamente.\n"
+                "• /cronograma: Forca a geracao e envio da tabela de jogos de hoje para a sala Pre-Jogo."
             )
             bot.send_message(
                 chat_id=message.chat.id, 
@@ -181,13 +182,13 @@ def registrar_comandos(bot: TeleBot):
             chat_id=message.chat.id, 
             text=analise_final,
             message_thread_id=message.message_thread_id,
-            parse_mode="Markdown"  # <--- Adicionamos isto para ativar os links clicáveis!
+            parse_mode="Markdown"
         )
 
     # =====================================================================
     # COMANDOS DE ADMINS - GRUPO 1: APENAS NA "MESA DOS ADMINS"
     # =====================================================================
-    @bot.message_handler(commands=['update', 'addliga', 'remliga', 'verligas', 'ids', 'scan'])
+    @bot.message_handler(commands=['update', 'addliga', 'remliga', 'verligas', 'ids', 'scan', 'cronograma'])
     def comandos_criticos_admin(message):
         if not eh_admin(bot, message):
             bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
@@ -259,6 +260,36 @@ def registrar_comandos(bot: TeleBot):
                 bot.send_message(
                     chat_id=message.chat.id, 
                     text="ℹ️ Varredura concluída. Nenhuma nova partida agendada para a próxima hora nas ligas monitoradas.",
+                    message_thread_id=message.message_thread_id
+                )
+
+        elif comando == 'cronograma':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="🔄 Buscando partidas de hoje e gerando tabela diária via IA...",
+                message_thread_id=message.message_thread_id
+            )
+            
+            from analisador import obter_jogos_do_dia, gerar_cronograma_diario_ia
+            jogos = obter_jogos_do_dia()
+            
+            if jogos:
+                texto_cronograma = gerar_cronograma_diario_ia(jogos)
+                # Envia focado especificamente na sala de Pré-Jogo
+                bot.send_message(
+                    chat_id=int(os.getenv("TELEGRAM_CHAT_ID")),
+                    text=texto_cronograma,
+                    message_thread_id=ID_PRE_JOGO
+                )
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="✅ Cronograma diário gerado e enviado com sucesso para a sala Pré-Jogo!",
+                    message_thread_id=message.message_thread_id
+                )
+            else:
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="ℹ️ Nenhuma partida agendada para hoje nas ligas monitoradas. Nada a enviar.",
                     message_thread_id=message.message_thread_id
                 )
 
