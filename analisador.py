@@ -17,7 +17,7 @@ def obter_cliente_gemini() -> genai.Client:
     return genai.Client(api_key=api_key)
 
 # =====================================================================
-# SISTEMA DE REDUNDÂNCIA DE APIS (FALLBACK MULTI-CHAVE)
+# SISTEMA DE REDUNDÂNCIA DE APIS (FALLBACK MULTI-CHAVE BLINDADO)
 # =====================================================================
 
 def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
@@ -42,18 +42,23 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
             resposta = requests.get(url, headers=headers, timeout=12)
             dados = resposta.json()
             
-            erros_da_api = dados.get("errors")
-            if erros_da_api:
-                print(f"⚠️ [Fallback API] Chave {i+1} falhou com erro: {erros_da_api}. Pulando para a próxima...")
-                ultimo_erro = erros_da_api
+            # REGRA BLINDADA: Se não houver a chave "response" OU se houver "errors" ativo, a chave FALHOU
+            is_erro = "response" not in dados or dados.get("errors")
+            
+            if is_erro:
+                erro_detalhado = dados.get("errors") if dados.get("errors") else dados
+                print(f"⚠️ [Fallback API] Chave {i+1} falhou. Motivo: {erro_detalhado}. Tentando chave reserva...")
+                ultimo_erro = erro_detalhado
                 continue
                 
+            # Se a requisição foi bem sucedida e possui "response", retorna os dados na hora!
             return dados
             
         except Exception as e:
             print(f"⚠️ [Fallback API] Erro de rede com a chave {i+1}: {e}. Pulando para a próxima...")
             ultimo_erro = str(e)
             
+    # Se todas as chaves configuradas falharem
     print("❌ [Fallback API] Alerta Crítico: Todas as chaves de API fornecidas falharam.")
     return {"response": [], "errors": ultimo_erro}
 
@@ -181,7 +186,7 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
         prompt = (
             f"Analise o ritmo ofensivo do jogo ao vivo com as seguintes estatísticas:\n"
             f"Liga: {liga} | Confronto: {time_casa} v {time_fora}\n"
-            f"Tempo: {tempo_minutos} minutos | Placar atual: {gols_casa} - {gols_fora}\n"
+            f"Tempo: {tempo_minutos} minutes | Placar atual: {gols_casa} - {gols_fora}\n"
             f"Estatísticas: {estatisticas}\n\n"
             f"REGRA DE TRADUÇÃO OBRIGATÓRIA: Traduza times e ligas para o Português do Brasil.\n"
             f"Siga estritamente o modelo de resposta de Robô Over Gols enviado anteriormente usando links Markdown de casas."
