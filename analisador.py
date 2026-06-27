@@ -259,3 +259,39 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
     except Exception as e:
         print(f"Erro na análise de sinais ao vivo para {time_casa} vs {time_fora}: {e}")
         return "Desculpe, ocorreu uma instabilidade ao gerar o sinal de gols em tempo real."
+
+def buscar_ids_ligas(termo_busca: str) -> List[Dict[str, Any]]:
+    """
+    Pesquisa IDs de ligas diretamente na API-Football usando um termo de busca (nome ou país).
+    """
+    if not API_FOOTBALL_KEY:
+        print("Erro: API_FOOTBALL_KEY não configurada.")
+        return []
+        
+    headers = {
+        'x-rapidapi-host': 'v3.football.api-sports.io',
+        'x-rapidapi-key': API_FOOTBALL_KEY
+    }
+    
+    try:
+        # A API-Football permite buscar enviando o termo de pesquisa (em inglês ou nome local)
+        resposta = requests.get(
+            f"{API_FOOTBALL_URL}/leagues?search={termo_busca}", 
+            headers=headers, 
+            timeout=12
+        )
+        dados = resposta.json().get("response", [])
+        
+        resultado = []
+        for item in dados:
+            liga = item["league"]
+            pais = item["country"]["name"]
+            resultado.append({
+                "id": liga["id"],
+                "nome": liga["name"],
+                "pais": pais
+            })
+        return resultado
+    except Exception as e:
+        print(f"Erro ao buscar IDs das ligas para '{termo_busca}': {e}")
+        return []
