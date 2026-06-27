@@ -50,6 +50,10 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
         return []
 
 def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
+    """
+    Gera o relatório compacto 'VAR do Lucro' avaliando mercados alternativos de alto valor
+    como escanteios, cartões, faltas e posse.
+    """
     try:
         client = obter_cliente_gemini()
         
@@ -57,46 +61,47 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
         time_casa = fixture["teams"]["home"]["name"]
         time_fora = fixture["teams"]["away"]["name"]
         
+        # Super prompt enxuto focado em síntese extrema e mercados alternativos de valor
         prompt = (
-            f"Você é o analista-chefe da cabine do 'VAR do Lucro', uma IA especialista em apostas esportivas baseadas em Valor Esperado (+EV).\n"
-            f"Sua missão é analisar o confronto entre {time_casa} (Mandante) e {time_fora} (Visitante) pela liga '{liga}'.\n\n"
+            f"Você é o 'VAR do Lucro', uma IA especialista em apostas esportivas de valor (+EV).\n"
+            f"Faça uma análise ULTRA-RESUMIDA e DIRETA do confronto: {time_casa} vs {time_fora} pela liga '{liga}'.\n\n"
             
-            f"REGRA DE TRADUÇÃO OBRIGATÓRIA:\n"
-            f"Traduza obrigatoriamente todos os nomes dos times, países e ligas para o Português do Brasil no relatório final.\n"
-            f"Por exemplo: 'Brazil' deve ser 'Brasil', 'Scotland' deve ser 'Escócia', 'Germany' deve ser 'Alemanha', 'World Cup' deve ser 'Copa do Mundo'.\n\n"
+            f"INSTRUÇÃO DE MERCADOS ADICIONAIS (MUITO IMPORTANTE):\n"
+            f"Além dos mercados comuns (Resultado e Gols), avalie mercados de Estatísticas alternativas se encontrar valor neles, tais como:\n"
+            f"- ESCANTEIOS (Ex: Mais de 9.5 escanteios, Handicap de Cantos)\n"
+            f"- CARTÕES (Ex: Mais de 4.5 cartões baseado no árbitro e rivalidade)\n"
+            f"- FALTAS ou LATERAIS (Ex: Menos faltas baseado em times que jogam limpo)\n"
+            f"Escolha as 2 opções de maior valor esperado (+EV) para indicar.\n\n"
             
-            f"Utilize a ferramenta de pesquisa do Google integrada para buscar dados reais de hoje sobre:\n"
-            f"- MANDO DE CAMPO E VIAGENS: Como é o rendimento do {time_fora} fora de casa? Houve desgaste de viagem recente?\n"
-            f"- FORMA RECENTE: Resultados e comportamento ofensivo/defensivo dos últimos 5 a 6 jogos de cada equipe.\n"
-            f"- DESFALQUES E LESÕES: Ausência de artilheiros, zagueiros titulares, capitães ou goleiros de última hora.\n"
-            f"- MOTIVAÇÃO E CALENDÁRIO: Há desgaste físico? Algum time poupará titulares visando mata-mata?\n"
-            f"- CONDIÇÕES CLIMÁTICAS E ARBITRAGEM: Gramado pesado por chuva? Perfil de cartões e faltas do árbitro escalado.\n"
-            f"- CLIMA NO VESTIÁRIO E NARRATIVAS: Salários atrasados, crises internas, ou chance da 'Lei do Ex'.\n"
-            f"- ANÁLISE DE MERCADO: Movimentação brusca das odds e comparação de valores justos (+EV).\n\n"
+            f"INSTRUÇÃO DE SÍNTESE:\n"
+            f"Seja extremamente direto, enxuto e curto. Evite textos longos.\n"
+            f"Traduza obrigatoriamente todos os nomes dos times, países e ligas para o Português do Brasil no relatório final.\n\n"
             
-            f"Formate a resposta exatamente seguindo o modelo a seguir, sem desvios de estrutura:\n\n"
+            f"Utilize a ferramenta de pesquisa do Google integrada para buscar dados reais de hoje sobre desfalques, árbitro, clima e médias de escanteios/cartões.\n\n"
+            
+            f"Siga estritamente o modelo de resposta abaixo, mantendo as justificativas muito curtas (máximo 1 linha):\n\n"
             
             f"🔍 RELATÓRIO DE INTELIGÊNCIA - VAR DO LUCRO\n"
             f"⚽ [Nome do Time Casa Traduzido] vs [Nome do Time Fora Traduzido]\n"
             f"🏆 [Nome da Liga Traduzido]\n"
             f"⏳ Começa em cerca de 1 hora!\n\n"
             
-            f"📋 ANÁLISE DO CONFRONTO:\n"
-            f"[Escreva um resumo analítico e objetivo focado nos desfalques, clima, vestiário, desgaste físico ou lei do ex identificados na pesquisa. Lembre-se de escrever em português correto, com os nomes dos times em português]\n\n"
+            f"📋 ANÁLISE DO CONFRONTO (Máximo de 3 linhas):\n"
+            f"[Escreva em apenas 2 ou 3 linhas o fato crucial do jogo: desfalque, média alta de cartões/cantos, desgaste ou clima]\n\n"
             
             f"🎯 MERCADOS COM MAIOR VALOR (+EV):\n"
-            f"1️⃣ [Nome do Mercado - Ex: Handicap Asiático / Total de Gols]\n"
-            f"   • Análise: [Justificativa técnica baseada nas estatísticas encontradas]\n"
+            f"1️⃣ [Mercado 1 - ex: Mais de 9.5 Escanteios / Handicap Gols / Ambas Marcam / Mais de 4.5 Cartões]\n"
+            f"   • Justificativa (1 linha): [Motivo ultra-direto baseado em estatísticas, médias ou árbitro]\n"
             f"   • Confiança: [X%]\n"
-            f"2️⃣ [Segundo Mercado de Valor]\n"
-            f"   • Análise: [Justificativa técnica baseada na forma/desfalques]\n"
+            f"2️⃣ [Mercado 2 - ex: Diferente do mercado 1 (Ex: Cartões ou Resultado)]\n"
+            f"   • Justificativa (1 linha): [Motivo ultra-direto]\n"
             f"   • Confiança: [X%]\n\n"
             
-            f"⚠️ PRINCIPAIS RISCOS DA OPERAÇÃO:\n"
-            f"• [Identifique o principal risco que pode anular a nossa análise, como retranca excessiva, clima ou arbitragem rigorosa]\n\n"
+            f"⚠️ PRINCIPAL RISCO:\n"
+            f"• [Escreva em apenas 1 linha o maior risco do jogo]\n\n"
             
-            f"🛡️ CONSELHO DE GESTÃO E PSICOLÓGICO:\n"
-            f"• [Forneça uma instrução clara de gestão de banca personalizada para esta partida (ex: sugerir Stake de 1% a 3% dependendo do risco), além de reforçar o controle emocional para não buscar greens de recuperação de forma desesperada]\n\n"
+            f"🛡️ GESTÃO E PSICOLOGIA:\n"
+            f"• [1 conselho curto de Stake (1% a 3%) e controle emocional]\n\n"
             
             f"👉 Aposta sugerida? Confira na sua Casa favorita! Jogue com responsabilidade 🔞"
         )
@@ -223,7 +228,7 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
 # SEÇÃO 3: CONTROLE DE LIGAS E VARREDURA AUTOMÁTICA/MANUAL
 # =====================================================================
 
-LIGAS_MONITORADAS = [71, 39, 140, 2]
+LIGAS_MONITORADAS = [71, 39, 140, 2, 1]
 JOGOS_ANALISADOS = set()
 
 def adicionar_liga_monitorada(league_id: int) -> bool:
@@ -256,11 +261,6 @@ def buscar_ids_ligas(termo_busca: str) -> List[Dict[str, Any]]:
         return []
 
 def verificar_e_enviar_pre_jogos(bot) -> int:
-    """
-    Varre os jogos do dia e envia a análise automaticamente 
-    para o tópico correto se o jogo começar em cerca de 1 hora.
-    Retorna o número de relatórios enviados de forma bem-sucedida.
-    """
     global JOGOS_ANALISADOS
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     topico_pre_jogo = os.getenv("TOPICO_PRE_JOGO")
@@ -286,7 +286,6 @@ def verificar_e_enviar_pre_jogos(bot) -> int:
         diferenca_tempo = data_jogo - agora
         minutos_para_comecar = diferenca_tempo.total_seconds() / 60
 
-        # Dispara quando faltar entre 50 e 70 minutos para o jogo começar
         if 50 <= minutos_para_comecar <= 70:
             time_casa = jogo["teams"]["home"]["name"]
             time_fora = jogo["teams"]["away"]["name"]
@@ -295,7 +294,6 @@ def verificar_e_enviar_pre_jogos(bot) -> int:
             try:
                 relatorio = gerar_relatorio_pre_jogo(jogo)
                 
-                # Envia focado especificamente na sala de Pré-Jogo
                 bot.send_message(
                     chat_id=chat_id,
                     text=relatorio,
