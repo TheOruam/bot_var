@@ -2,7 +2,7 @@
 import os
 import time
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
@@ -19,7 +19,7 @@ def obter_cliente_gemini() -> genai.Client:
     return genai.Client(api_key=api_key)
 
 # =====================================================================
-# SEÇÃO 1: ANÁLISE PRÉ-JOGO (GERADOR DO "VAR DO LUCRO")
+# SEÇÃO 1: ANÁLISE PRÉ-JOGO E CRONOGRAMA DIÁRIO (00:00 BRT)
 # =====================================================================
 
 def obter_jogos_do_dia() -> List[Dict[str, Any]]:
@@ -31,29 +31,68 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
         'x-rapidapi-host': 'v3.football.api-sports.io',
         'x-rapidapi-key': API_FOOTBALL_KEY
     }
-    hoje = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    
+    # Obtém o dia atual no Horário de Brasília (UTC-3)
+    agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
+    hoje_brt = agora_brt.strftime('%Y-%m-%d')
     
     try:
-        resposta = requests.get(f"{API_FOOTBALL_URL}/fixtures?date={hoje}", headers=headers, timeout=15)
+        # Busca todas as partidas do dia atual na API
+        resposta = requests.get(f"{API_FOOTBALL_URL}/fixtures?date={hoje_brt}", headers=headers, timeout=15)
         todos_jogos = resposta.json().get("response", [])
         
+        # Filtra localmente apenas pelas ligas monitoradas
         jogos_filtrados = [
             jogo for jogo in todos_jogos 
             if jogo["league"]["id"] in LIGAS_MONITORADAS
         ]
         
-        print(f"Total de jogos hoje: {len(todos_jogos)} | Filtrados para monitoramento: {len(jogos_filtrados)}")
+        print(f"Data BRT consultada: {hoje_brt} | Total jogos mundo: {len(todos_jogos)} | Filtrados: {len(jogos_filtrados)}")
         return jogos_filtrados
         
     except Exception as e:
         print(f"Erro ao buscar partidas agendadas para o dia de hoje: {e}")
         return []
 
+def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
+    """
+    Envia a lista bruta de partidas do dia para o Gemini formatar um cronograma
+    limpo, traduzido e convertido para o Horário de Brasília (UTC-3).
+    """
+    try:
+        client = obter_cliente_gemini()
+        
+        # Simplifica os dados para poupar tokens de processamento
+        lista_resumida = []
+        for jogo in jogos:
+            lista_resumida.append({
+                "campeonato": jogo["league"]["name"],
+                "casa": jogo["teams"]["home"]["name"],
+                "fora": jogo["teams"]["away"]["name"],
+                "hora_utc": jogo["fixture"]["date"]  # Ex: 2023-10-27T18:00:00+00:00
+            })
+
+        prompt = (
+            "Você é o 'VAR do Lucro'. Organize a lista de partidas de futebol abaixo em um cronograma diário limpo e elegante.\n\n"
+            "REGRAS DE CONVERSÃO E TRADUÇÃO:\n"
+            "1. Agrupe as partidas estritamente por Campeonato/Liga.\n"
+            "2. Converta o horário 'hora_utc' (que está em fuso UTC) para o Horário de Brasília (UTC-3). Mostre apenas as horas (ex: 11:00, 16:00, 20:30).\n"
+            "3. Traduza obrigatoriamente todos os nomes de times, países e ligas para o Português do Brasil (ex: 'Brazil' vira 'Brasil', 'World Cup' vira 'Copa do Mundo').\n"
+            "4. NÃO use asteriscos (*) em hipótese alguma na resposta final. Monte uma tabela textual bonita usando espaçamentos, quebras de linha e barras verticais se necessário.\n"
+            "5. Adicione emojis esportivos ou bandeiras para deixar o visual atraente.\n\n"
+            f"Lista de jogos do dia:\n{lista_resumida}"
+        )
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        return response.text
+    except Exception as e:
+        print(f"Erro ao gerar cronograma de jogos via IA: {e}")
+        return "Erro ao construir o cronograma diário de partidas."
+
 def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
-    """
-    Gera o relatório compacto 'VAR do Lucro' avaliando mercados alternativos de alto valor
-    como escanteios, cartões, faltas e posse.
-    """
     try:
         client = obter_cliente_gemini()
         
@@ -61,7 +100,6 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
         time_casa = fixture["teams"]["home"]["name"]
         time_fora = fixture["teams"]["away"]["name"]
         
-        # Super prompt enxuto focado em síntese extrema e mercados alternativos de valor
         prompt = (
             f"Você é o 'VAR do Lucro', uma IA especialista em apostas esportivas de valor (+EV).\n"
             f"Faça uma análise ULTRA-RESUMIDA e DIRETA do confronto: {time_casa} vs {time_fora} pela liga '{liga}'.\n\n"
@@ -165,10 +203,6 @@ def buscar_jogo_ao_vivo_por_time(nome_time: str) -> Optional[Dict[str, Any]]:
         return None
 
 def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
-    """
-    Gera o alerta dinâmico de 'Robô Over Gols' utilizando as estatísticas ao vivo,
-    com indicações inteligentes de casas de apostas em formato de hiperlink Markdown.
-    """
     try:
         client = obter_cliente_gemini()
         
@@ -239,11 +273,12 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
         return "Desculpe, ocorreu uma instabilidade ao gerar o sinal de gols em tempo real."
 
 # =====================================================================
-# SEÇÃO 3: CONTROLE DE LIGAS E VARREDURA AUTOMÁTICA/MANUAL
+# SEÇÃO 3: CONTROLE DE LIGAS, AGENDAMENTOS E CRONOGRAMAS
 # =====================================================================
 
-LIGAS_MONITORADAS = [71, 39, 140, 2, 1]
+LIGAS_MONITORADAS = [71, 39, 140, 2]
 JOGOS_ANALISADOS = set()
+ULTIMO_DIA_CRONOGRAMA = ""
 
 def adicionar_liga_monitorada(league_id: int) -> bool:
     global LIGAS_MONITORADAS
@@ -273,6 +308,45 @@ def buscar_ids_ligas(termo_busca: str) -> List[Dict[str, Any]]:
     except Exception as e:
         print(f"Erro ao buscar IDs: {e}")
         return []
+
+def verificar_e_enviar_cronograma(bot) -> bool:
+    """
+    Verifica se um novo dia no Horário de Brasília (UTC-3) começou e, 
+    se sim, envia o cronograma diário completo de jogos na sala de Pré-Jogo.
+    """
+    global ULTIMO_DIA_CRONOGRAMA
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    topico_pre_jogo = os.getenv("TOPICO_PRE_JOGO")
+    
+    if not chat_id or not topico_pre_jogo:
+        return False
+        
+    # Calcula a data atual no Horário de Brasília (UTC-3)
+    agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
+    dia_atual_brt = agora_brt.strftime('%Y-%m-%d')
+    
+    # Se o dia atual brasileiro mudou em relação ao último que enviamos
+    if dia_atual_brt != ULTIMO_DIA_CRONOGRAMA:
+        print(f"Novo dia detectado ({dia_atual_brt} BRT). Carregando cronograma esportivo...")
+        jogos = obter_jogos_do_dia()
+        
+        if jogos:
+            texto_cronograma = gerar_cronograma_diario_ia(jogos)
+            try:
+                bot.send_message(
+                    chat_id=chat_id,
+                    text=texto_cronograma,
+                    message_thread_id=int(topico_pre_jogo)
+                )
+                ULTIMO_DIA_CRONOGRAMA = dia_atual_brt
+                return True
+            except Exception as e:
+                print(f"Erro ao disparar cronograma diário de jogos: {e}")
+        else:
+            # Se não houver jogos para as ligas hoje, marca como processado para não tentar re-enviar
+            ULTIMO_DIA_CRONOGRAMA = dia_atual_brt
+            
+    return False
 
 def verificar_e_enviar_pre_jogos(bot) -> int:
     global JOGOS_ANALISADOS
