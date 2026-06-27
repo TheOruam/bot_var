@@ -88,6 +88,63 @@ def registrar_comandos(bot: TeleBot):
     # COMANDOS DE ADMINISTRADORES (BLOQUEADOS)
     # ==========================================
 
+    @bot.message_handler(commands=['addliga'])
+    def comando_add_liga(message):
+        if not eh_admin(bot, message):
+            bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
+            return
+        
+        try:
+            # Extrai o ID digitado pelo admin
+            id_liga = int(message.text.replace('/addliga', '').strip())
+            from analisador import adicionar_liga_monitorada
+            
+            sucesso = adicionar_liga_monitorada(id_liga)
+            if sucesso:
+                bot.reply_to(message, f"Sucesso! A liga ID {id_liga} foi adicionada ao monitoramento ativo.")
+            else:
+                bot.reply_to(message, f"A liga ID {id_liga} ja estava na lista de monitoramento.")
+        except ValueError:
+            bot.reply_to(message, "⚠️ ID invalido. Use o comando enviando apenas numeros. Exemplo: /addliga 71")
+
+    @bot.message_handler(commands=['remliga'])
+    def comando_rem_liga(message):
+        if not eh_admin(bot, message):
+            bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
+            return
+        
+        try:
+            id_liga = int(message.text.replace('/remliga', '').strip())
+            from analisador import remover_liga_monitorada
+            
+            sucesso = remover_liga_monitorada(id_liga)
+            if sucesso:
+                bot.reply_to(message, f"Sucesso! A liga ID {id_liga} foi removida do monitoramento.")
+            else:
+                bot.reply_to(message, f"A liga ID {id_liga} nao foi encontrada na lista.")
+        except ValueError:
+            bot.reply_to(message, "⚠️ ID invalido. Use o comando enviando apenas numeros. Exemplo: /remliga 71")
+
+    @bot.message_handler(commands=['verligas'])
+    def comando_ver_ligas(message):
+        if not eh_admin(bot, message):
+            bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
+            return
+            
+        from analisador import listar_ligas_monitoradas
+        ligas = listar_ligas_monitoradas()
+        
+        texto = (
+            "LIGAS ATIVAS NO MONITORAMENTO DO VAR:\n\n"
+            f"IDs Monitorados: {ligas}\n\n"
+            "Dica de IDs comuns:\n"
+            "• 71: Brasileirao Serie A\n"
+            "• 39: Premier League (Inglaterra)\n"
+            "• 140: La Liga (Espanha)\n"
+            "• 2: Champions League (Europa)"
+        )
+        bot.send_message(message.chat.id, texto)
+    
     @bot.message_handler(commands=['bemvindo'])
     def comando_bemvindo(message):
         if not eh_admin(bot, message):
