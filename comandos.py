@@ -220,10 +220,18 @@ def registrar_comandos(bot: TeleBot):
                 status_gemini = f"FALHA ({e})"
                 
             try:
-                headers = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': chave_football}
+                # Testa usando a primeira chave da lista de redundância
+                primeira_chave = [k.strip() for k in chave_football.split(",") if k.strip()][0]
+                headers = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': primeira_chave}
                 res = requests.get("https://v3.football.api-sports.io/status", headers=headers, timeout=5)
-                if res.status_code != 200:
-                    status_api_football = f"FALHA (Status HTTP {res.status_code})"
+                dados_status = res.json()
+                
+                # Validação blindada do diagnóstico
+                if "response" not in dados_status or dados_status.get("errors"):
+                    erro_recebido = dados_status.get("errors") if dados_status.get("errors") else dados_status
+                    status_api_football = f"FALHA (Erro retornado: {erro_recebido})"
+                else:
+                    status_api_football = "OK"
             except Exception as e:
                 status_api_football = f"FALHA ({e})"
                 
@@ -302,7 +310,6 @@ def registrar_comandos(bot: TeleBot):
                     message_thread_id=message.message_thread_id
                 )
             else:
-                # Painel de diagnóstico que te dirá exatamente o que está acontecendo
                 msg_diagnostico = (
                     "ℹ️ Nenhuma partida encontrada hoje nas suas ligas monitoradas.\n\n"
                     "🔍 PAINEL DE DIAGNÓSTICO DA API:\n"
@@ -334,11 +341,7 @@ def registrar_comandos(bot: TeleBot):
                 times_encontrados = res_busca.json().get("response", [])
                 
                 if not times_encontrados:
-                    bot.send_message(
-                        chat_id=message.chat.id, 
-                        text=f"❌ Nao encontrei nenhum time com o nome '{nome_time}'.",
-                        message_thread_id=message.message_thread_id
-                    )
+                    bot.send_message(message.chat.id, f"❌ Nao encontrei nenhum time com o nome '{nome_time}'.", message_thread_id=message.message_thread_id)
                     return
                     
                 time_id = times_encontrados[0]["team"]["id"]
@@ -347,11 +350,11 @@ def registrar_comandos(bot: TeleBot):
                 url_web_app = f"{os.getenv('WEBHOOK_URL')}/painel_time?team_id={time_id}&league_id=71&season=2024"
                 
                 teclado = telebot.types.InlineKeyboardMarkup()
-                botao_painel = telebot.types.InlineKeyboardButton(
+                botao_panel = telebot.types.InlineKeyboardButton(
                     text=f"📊 Ver Estatísticas do {time_nome}",
                     web_app=telebot.types.WebAppInfo(url=url_web_app)
                 )
-                teclado.add(botao_painel)
+                teclado.add(botao_panel)
                 
                 bot.send_message(
                     chat_id=message.chat.id,
