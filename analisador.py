@@ -12,7 +12,7 @@ API_FOOTBALL_URL = "https://v3.football.api-sports.io"
 
 # Lista global em memória com os IDs das principais ligas para iniciar o Bot.
 # Exemplos: 71 = Brasileirão Série A, 39 = Premier League, 140 = La Liga, 2 = Champions League
-LIGAS_MONITORADAS = [71, 39, 140, 2]
+LIGAS_MONITORADAS = [1, 71, 39, 140, 2]
 
 def adicionar_liga_monitorada(league_id: int) -> bool:
     """Adiciona um ID de liga à lista de monitoramento local."""
