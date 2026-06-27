@@ -165,6 +165,10 @@ def buscar_jogo_ao_vivo_por_time(nome_time: str) -> Optional[Dict[str, Any]]:
         return None
 
 def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
+    """
+    Gera o alerta dinâmico de 'Robô Over Gols' utilizando as estatísticas ao vivo,
+    com indicações inteligentes de casas de apostas em formato de hiperlink Markdown.
+    """
     try:
         client = obter_cliente_gemini()
         
@@ -188,6 +192,16 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
             f"Traduza obrigatoriamente todos os nomes dos times, países e ligas para o Português do Brasil na mensagem final.\n"
             f"Por exemplo: 'Brazil' deve ser 'Brasil', 'Scotland' deve ser 'Escócia', 'Germany' deve ser 'Alemanha', 'World Cup' deve ser 'Copa do Mundo'.\n\n"
             
+            f"REGRA DE HIPERLINKS DE CASAS DE APOSTAS (MUITO IMPORTANTE):\n"
+            f"Na seção 'Confira nas casas', escolha de 1 a 2 casas de apostas da lista abaixo para recomendar (seja dinâmico na escolha).\n"
+            f"Você deve formatar obrigatoriamente como link Markdown: [Nome da Casa](Link).\n"
+            f"Use estritamente estes links oficiais listados (você pode sugerir outro se julgar pertinente usando sua URL padrão):\n"
+            f"- Superbet: [Superbet](https://superbet.com)\n"
+            f"- Bet365: [Bet365](https://www.bet365.com)\n"
+            f"- EstrelaBet: [EstrelaBet](https://estrelabet.com)\n"
+            f"- Novibet: [Novibet](https://novibet.com)\n"
+            f"- Sportingbet: [Sportingbet](https://sportingbet.com)\n\n"
+            
             f"Instruções:\n"
             f"1. Faça uma varredura veloz na internet (via pesquisa Google) para verificar se houve expulsões recentes (cartão vermelho) nesta partida.\n"
             f"2. Preencha e envie unicamente o modelo a seguir com os dados extraídos. Não altere os cabeçalhos das estatísticas:\n\n"
@@ -205,7 +219,7 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
             f"- Controle da bola: [Posse do Mandante]% - [Posse do Visitante]%\n\n"
             f"🔥 Sinal: [Com base na pressão de finalizações, defina o sinal como 'Mais 0.5 Gols', 'Mais 1 Gol', ou 'Sem entrada recomendada']\n\n"
             f"↪ Confira nas casas:\n"
-            f"🎲 Pegue na Superbet\n\n"
+            f"🎲 Pegue na [Nome da Casa escolhida](Link_da_casa_escolhida)\n\n"
             f"Jogue com responsabilidade 🔞"
         )
 
