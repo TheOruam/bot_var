@@ -56,13 +56,43 @@ def registrar_comandos(bot: TeleBot):
 
     @bot.message_handler(commands=['start', 'ajuda'])
     def enviar_ajuda(message):
-        texto = (
+        # Se for um Admin digitando na Mesa dos Admins, mostra a ajuda avançada de controle
+        if eh_admin(bot, message) and verificar_sala(message, ID_ADMINS):
+            ajuda_admin = (
+                "💎 PAINEL DE CONTROLE DO OPERADOR (ADMINS) 💎\n\n"
+                "Aqui esta o manual com todos os comandos criados e suas funcoes:\n\n"
+                "📌 COMANDOS PUBLICOS (Disponiveis para membros):\n"
+                "• /prejogo <time>: Manda o relatorio VAR do Lucro. (Somente na sala Pre-Jogo)\n"
+                "• /aovivo <time>: Manda o sinal de Over Gols. (Somente na sala de Sinais Ao Vivo)\n\n"
+                "📌 INTERACOES DO ADMIN (Qualquer uma das 4 salas):\n"
+                "• /bomdia: Envia mensagem animada sobre regras de ouro e gestao.\n"
+                "• /bemvindo: Envia recepcao do VAR (disparado auto para novos membros na Resenha).\n"
+                "• /green: Alerta festivo para comemorar acertos.\n"
+                "• /red: Alerta tecnico focado em gestao e psicologia pos-red.\n"
+                "• /resenha: Sorteia uma curiosidade bizarra de futebol.\n\n"
+                "📌 COMANDOS CRITICOS E APIS (Apenas na sala Mesa dos Admins):\n"
+                "• /update: Faz auto-diagnostico das conexoes do Gemini e API de Futebol.\n"
+                "• /ids <busca>: Pesquisa e retorna os IDs corretos de ligas na API.\n"
+                "• /addliga <ID>: Adiciona um campeonato ao monitoramento ativo.\n"
+                "• /remliga <ID>: Remove um campeonato do monitoramento.\n"
+                "• /verligas: Mostra os IDs das ligas monitoradas no momento.\n"
+                "• /scan: Força a varredura de jogos para a proxima hora imediatamente."
+            )
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=ajuda_admin,
+                message_thread_id=message.message_thread_id
+            )
+            return
+
+        # Ajuda padrão para membros nas outras salas
+        texto_membro = (
             "💎 Central de Inteligência Esportiva 💎\n\n"
             "Cada comando possui sua sala específica:\n"
             "• Use o comando /prejogo somente na sala Pré-Jogo.\n"
             "• Use o comando /aovivo somente na sala de Sinais Ao Vivo."
         )
-        bot.reply_to(message, texto)
+        bot.reply_to(message, texto_membro)
 
     # =====================================================================
     # COMANDO: PRÉ-JOGO (APENAS NA SALA PRÉ-JOGO)
