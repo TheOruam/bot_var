@@ -3,6 +3,7 @@ import os
 import random
 import requests
 from telebot import TeleBot
+from deep_translator import GoogleTranslator
 from analisador import buscar_jogo_ao_vivo_por_time, analisar_ao_vivo_e_formatar, obter_jogos_do_dia, gerar_relatorio_pre_jogo, obter_cliente_gemini
 
 # Captura os IDs das salas do ambiente (padrão 0 caso não configurados)
@@ -36,6 +37,20 @@ def verificar_sala(message, id_sala_permitida: int) -> bool:
         
     return int(thread_id) == id_sala_permitida
 
+def traduzir_busca_para_ingles(termo: str) -> str:
+    """
+    Traduz de forma inteligente o termo digitado em Português para o Inglês.
+    Ex: 'Brasil' -> 'Brazil', 'Escócia' -> 'Scotland'.
+    Evita falhas de busca na API-Football.
+    """
+    try:
+        traducao = GoogleTranslator(source='pt', target='en').translate(termo)
+        print(f"Busca original: '{termo}' | Traduzido para API: '{traducao}'")
+        return traducao
+    except Exception as e:
+        print(f"Erro na tradução pré-busca: {e}")
+        return termo
+
 def registrar_comandos(bot: TeleBot):
     """Registra todos os comandos e faz a triagem das salas de destino."""
 
@@ -63,10 +78,14 @@ def registrar_comandos(bot: TeleBot):
             bot.reply_to(message, "⚠️ Digite o nome do time. Exemplo: /prejogo Flamengo")
             return
             
-        bot.reply_to(message, f"🔍 Buscando cronograma de hoje para '{args}'...")
+        bot.reply_to(message, f"🔍 Traduzindo e buscando cronograma de hoje para '{args}'...")
+        
+        # Traduz a busca do usuário (ex: 'Brasil' vira 'Brazil') antes de consultar a API
+        args_ingles = traduzir_busca_para_ingles(args)
+        
         jogos_hoje = obter_jogos_do_dia()
         jogo_encontrado = None
-        args_min = args.lower().strip()
+        args_min = args_ingles.lower().strip()
         
         for jogo in jogos_hoje:
             casa = jogo["teams"]["home"]["name"].lower()
@@ -109,8 +128,12 @@ def registrar_comandos(bot: TeleBot):
             bot.reply_to(message, "⚠️ Digite o nome do time. Exemplo: /aovivo Real Madrid")
             return
         
-        bot.reply_to(message, f"🔍 Procurando partida ao vivo para '{args}'...")
-        dados_jogo = buscar_jogo_ao_vivo_por_time(args)
+        bot.reply_to(message, f"🔍 Traduzindo e procurando partida ao vivo para '{args}'...")
+        
+        # Traduz o time buscado para o inglês para garantir compatibilidade com a API
+        args_ingles = traduzir_busca_para_ingles(args)
+        
+        dados_jogo = buscar_jogo_ao_vivo_por_time(args_ingles)
         
         if not dados_jogo:
             bot.send_message(
@@ -223,8 +246,10 @@ def registrar_comandos(bot: TeleBot):
                 if not arg_busca:
                     bot.reply_to(message, "Para buscar IDs de ligas use: /ids <nome_ou_pais>\nTabela completa: https://dashboard.api-sports.io/football/ids", disable_web_page_preview=True)
                 else:
+                    # Traduz o termo da busca antes de ir à API
+                    arg_busca_ingles = traduzir_busca_para_ingles(arg_busca)
                     from analisador import buscar_ids_ligas
-                    res = buscar_ids_ligas(arg_busca)
+                    res = buscar_ids_ligas(arg_busca_ingles)
                     if not res:
                         bot.send_message(
                             chat_id=message.chat.id, 
