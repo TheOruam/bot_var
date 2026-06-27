@@ -118,3 +118,287 @@ def registrar_comandos(bot: TeleBot):
     # =====================================================================
     @bot.message_handler(commands=['aovivo'])
     def comando_ao_vivo(message):
+        if not verificar_sala(message, ID_AO_VIVO):
+            bot.reply_to(message, "⚠️ Este comando so pode ser utilizado na sala de Sinais Ao Vivo.")
+            return
+
+        args = message.text.replace('/aovivo', '').strip()
+        if not args:
+            bot.reply_to(message, "⚠️ Digite o nome do time. Exemplo: /aovivo Real Madrid")
+            return
+        
+        bot.reply_to(message, f"🔍 Traduzindo e procurando partida ao vivo para '{args}'...")
+        
+        args_ingles = traduzir_busca_para_ingles(args)
+        
+        dados_jogo = buscar_jogo_ao_vivo_por_time(args_ingles)
+        
+        if not dados_jogo:
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=f"❌ Nenhuma partida ao vivo encontrada para '{args}' no momento.",
+                message_thread_id=message.message_thread_id
+            )
+            return
+            
+        bot.send_message(
+            chat_id=message.chat.id, 
+            text="📊 Partida encontrada! Calculando probabilidades e notícias...",
+            message_thread_id=message.message_thread_id
+        )
+        analise_final = analisar_ao_vivo_e_formatar(dados_jogo)
+        bot.send_message(
+            chat_id=message.chat.id, 
+            text=analise_final,
+            message_thread_id=message.message_thread_id
+        )
+
+    # =====================================================================
+    # COMANDOS DE ADMINS - GRUPO 1: APENAS NA "MESA DOS ADMINS"
+    # =====================================================================
+    @bot.message_handler(commands=['update', 'addliga', 'remliga', 'verligas', 'ids', 'scan'])
+    def comandos_criticos_admin(message):
+        if not eh_admin(bot, message):
+            bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
+            return
+
+        if not verificar_sala(message, ID_ADMINS):
+            bot.reply_to(message, "⚠️ Este comando de configuração só é aceito dentro da sala Mesa dos Admins.")
+            return
+
+        comando = message.text.split()[0].replace('/', '').strip().lower()
+
+        if comando == 'update':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="Iniciando auto-diagnostico dos sistemas...",
+                message_thread_id=message.message_thread_id
+            )
+            status_gemini = "OK"
+            status_api_football = "OK"
+            
+            chave_gemini = os.getenv("GEMINI_API_KEY")
+            chave_football = os.getenv("API_FOOTBALL_KEY")
+            
+            try:
+                client = obter_cliente_gemini()
+                client.models.generate_content(model='gemini-2.5-flash', contents="ping")
+            except Exception as e:
+                status_gemini = f"FALHA ({e})"
+                
+            try:
+                headers = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': chave_football}
+                res = requests.get("https://v3.football.api-sports.io/status", headers=headers, timeout=5)
+                if res.status_code != 200:
+                    status_api_football = f"FALHA (Status HTTP {res.status_code})"
+            except Exception as e:
+                status_api_football = f"FALHA ({e})"
+                
+            relatorio_update = (
+                "DIAGNOSTICO DE SISTEMA COMPLETO\n\n"
+                f"Variavel GEMINI KEY: {'Configurada' if chave_gemini else 'AUSENTE'}\n"
+                f"Variavel FOOTBALL KEY: {'Configurada' if chave_football else 'AUSENTE'}\n\n"
+                f"Conexao Google Gemini IA: {status_gemini}\n"
+                f"Conexao API-Football: {status_api_football}\n\n"
+                "Se todos os itens estiverem OK, seu bot esta operando em perfeito estado na nuvem."
+            )
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=relatorio_update,
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'scan':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="🔄 Iniciando varredura manual de partidas para a próxima hora...",
+                message_thread_id=message.message_thread_id
+            )
+            
+            from analisador import verificar_e_enviar_pre_jogos
+            qtd_enviados = verificar_e_enviar_pre_jogos(bot)
+            
+            if qtd_enviados > 0:
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text=f"✅ Varredura concluída! {qtd_enviados} novo(s) relatório(s) enviado(s) para a sala Pré-Jogo.",
+                    message_thread_id=message.message_thread_id
+                )
+            else:
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="ℹ️ Varredura concluída. Nenhuma nova partida agendada para a próxima hora nas ligas monitoradas.",
+                    message_thread_id=message.message_thread_id
+                )
+
+        elif comando == 'addliga':
+            try:
+                id_liga = int(message.text.split()[1])
+                from analisador import adicionar_liga_monitorada
+                if adicionar_liga_monitorada(id_liga):
+                    bot.reply_to(message, f"Sucesso! A liga ID {id_liga} foi adicionada ao monitoramento.")
+                else:
+                    bot.reply_to(message, f"A liga ID {id_liga} ja estava no monitoramento.")
+            except Exception:
+                bot.reply_to(message, "⚠️ Use: /addliga <numero_id>")
+
+        elif comando == 'remliga':
+            try:
+                id_liga = int(message.text.split()[1])
+                from analisador import remover_liga_monitorada
+                if remover_liga_monitorada(id_liga):
+                    bot.reply_to(message, f"Sucesso! A liga ID {id_liga} foi removida.")
+                else:
+                    bot.reply_to(message, f"A liga ID {id_liga} nao foi encontrada.")
+            except Exception:
+                bot.reply_to(message, "⚠️ Use: /remliga <numero_id>")
+
+        elif comando == 'verligas':
+            from analisador import listar_ligas_monitoradas
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=f"LIGAS ATIVAS NO MONITORAMENTO DO VAR:\n\nIDs Monitorados: {listar_ligas_monitoradas()}",
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'ids':
+            try:
+                arg_busca = message.text.replace('/ids', '').strip()
+                if not arg_busca:
+                    bot.reply_to(message, "Para buscar IDs de ligas use: /ids <nome_ou_pais>\nTabela completa: https://dashboard.api-sports.io/football/ids", disable_web_page_preview=True)
+                else:
+                    arg_busca_ingles = traduzir_busca_para_ingles(arg_busca)
+                    from analisador import buscar_ids_ligas
+                    res = buscar_ids_ligas(arg_busca_ingles)
+                    if not res:
+                        bot.send_message(
+                            chat_id=message.chat.id, 
+                            text="Nenhuma liga encontrada.",
+                            message_thread_id=message.message_thread_id
+                        )
+                    else:
+                        linhas = [f"• ID: {r['id']} | {r['nome']} ({r['pais']})" for r in res[:15]]
+                        bot.send_message(
+                            chat_id=message.chat.id, 
+                            text="RESULTADO DA BUSCA DE LIGAS:\n\n" + "\n".join(linhas),
+                            message_thread_id=message.message_thread_id
+                        )
+            except Exception as e:
+                bot.reply_to(message, f"Erro ao buscar IDs: {e}")
+
+
+    # =====================================================================
+    # COMANDOS DE ADMINS - GRUPO 2: PERMITIDOS EM QUALQUER UMA DAS 4 SALAS
+    # =====================================================================
+    @bot.message_handler(commands=['bemvindo', 'bomdia', 'green', 'red', 'resenha'])
+    def comandos_interacao_admin(message):
+        if not eh_admin(bot, message):
+            bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
+            return
+
+        thread_id = message.message_thread_id
+        if thread_id is not None:
+            thread_id = int(thread_id)
+            if thread_id not in [ID_PRE_JOGO, ID_AO_VIVO, ID_RESENHA, ID_ADMINS]:
+                bot.reply_to(message, "⚠️ Comandos administrativos nao sao permitidos nesta sala do forum.")
+                return
+
+        comando = message.text.split()[0].replace('/', '').strip().lower()
+
+        if comando == 'bemvindo':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=(
+                    "Atencao cabine do VAR! Temos um novo integrante na mesa de operacoes!\n\n"
+                    "Analisando o perfil do novato em nossa tela de transmissao...\n"
+                    "Checando dados... Verificando batimentos cardiacos... Analisando a carteira...\n\n"
+                    "DECISAO CONFIRMADA NO MONITOR:\n"
+                    "Cadastro aprovado com sucesso! Seja muito bem-vindo ao VAR do Lucro!\n"
+                    "Prepare sua planilha, ajuste sua stake e junte-se aos operadores profissionais de elite."
+                ),
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'bomdia':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=(
+                    "Bom dia, mercado! Os monitores ja estao ligados e as APIs aquecidas!\n\n"
+                    "Hoje o dia promete muitas oportunidades na nossa mesa de analise. "
+                    "Lembre-se das regras de ouro para hoje:\n"
+                    "1. Proteja seu capital (stake controlada).\n"
+                    "2. Estude os relatorios antes de clicar.\n"
+                    "3. Mantenha a calma de um monge, ganhando ou perdendo.\n\n"
+                    "Que o valor esperado positivo esteja conosco. Bons investimentos a todos!"
+                ),
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'green':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=(
+                    "EXPLODIU O GREEN DA NOSSA ANALISE!\n\n"
+                    "A analise cirurgica do nosso relatorio bateu exatamente com o andamento do jogo!\n"
+                    "Quem seguiu a gestao de banca e entrou na recomendacao do VAR do Lucro acabou de colocar dinheiro no bolso!\n"
+                    "O mercado tentou segurar, mas a nossa leitura tecnica foi implacavel.\n"
+                    "Parabens aos lucros coletados! Comemore sem perder o foco na proxima operacao."
+                ),
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'red':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=(
+                    "Atenção operadores: Red detectado.\n\n"
+                    "O futebol tem variaveis imprevisiveis que nenhuma estatistica consegue blindar 100 por cento.\n"
+                    "Mas e aqui que se separam os amadores dos profissionais:\n"
+                    "Seguir estritamente a nossa stake de 1 a 3 por cento garante que esse tropeço nao afete sua saude financeira.\n"
+                    "Nao tente recuperar o valor perdido imediatamente com apostas desesperadas sem estudo.\n"
+                    "Mantenha o controle emocional. A longo prazo, a consistencia matematica sempre vence."
+                ),
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'resenha':
+            curiosidades = [
+                "Voce sabia que em 1998, um raio atingiu o gramado durante um jogo no Congo e matou todos os 11 jogadores de um time, enquanto o outro time saiu completamente ileso? Bizarro demais!",
+                "Na Inglaterra, o jogador Lee Todd levou o cartao vermelho mais rapido da historia: apenas 2 segundos de jogo! Ao ouvir o apito inicial do juiz perto do seu ouvido, ele exclamou: Caramba, isso foi muito alto! E foi expulso.",
+                "Em 1945, um jogo entre Arsenal e Dynamo de Moscou ocorreu sob uma névoa tao densa que ninguem enxergava nada. O Dynamo fez substituicoes sem ninguem perceber e acabou jogando com 15 jogadores em campo por quase meia hora!"
+            ]
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="CURIOSIDADE DO VAR DO LUCRO\n\n" + random.choice(curiosidades),
+                message_thread_id=message.message_thread_id
+            )
+
+    # =====================================================================
+    # MONITORAMENTO AUTOMÁTICO DE NOVOS MEMBROS (ENVIO NA SALA RESENHA)
+    # =====================================================================
+    @bot.message_handler(content_types=['new_chat_members'])
+    def boas_vindas_automatico(message):
+        """
+        Detecta automaticamente a entrada de novos usuários no grupo 
+        e envia a mensagem de acolhimento do VAR na sala de Resenha.
+        """
+        if not ID_RESENHA:
+            return
+
+        texto_boas_vindas = (
+            "Atencao cabine do VAR! Temos um novo integrante na mesa de operacoes!\n\n"
+            "Analisando o perfil do novato em nossa tela de transmissao...\n"
+            "Checando dados... Verificando batimentos cardiacos... Analisando a carteira...\n\n"
+            "DECISAO CONFIRMADA NO MONITOR:\n"
+            "Cadastro aprovado com sucesso! Seja muito bem-vindo ao VAR do Lucro!\n"
+            "Prepare sua planilha, ajuste sua stake e junte-se aos operadores profissionais de elite."
+        )
+
+        try:
+            bot.send_message(
+                chat_id=message.chat.id,
+                text=texto_boas_vindas,
+                message_thread_id=ID_RESENHA
+            )
+        except Exception as e:
+            print(f"Erro ao processar as boas-vindas automatizadas: {e}")
