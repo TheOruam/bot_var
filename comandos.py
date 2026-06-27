@@ -210,6 +210,30 @@ def registrar_comandos(bot: TeleBot):
                 message_thread_id=message.message_thread_id
             )
 
+        elif comando == 'scan':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="🔄 Iniciando varredura manual de partidas para a próxima hora...",
+                message_thread_id=message.message_thread_id
+            )
+            
+            from analisador import verificar_e_enviar_pre_jogos
+            # Executa a varredura e pega o número de envios
+            qtd_enviados = verificar_e_enviar_pre_jogos(bot)
+            
+            if qtd_enviados > 0:
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text=f"✅ Varredura concluída! {qtd_enviados} novo(s) relatório(s) enviado(s) para a sala Pré-Jogo.",
+                    message_thread_id=message.message_thread_id
+                )
+            else:
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="ℹ️ Varredura concluída. Nenhuma nova partida agendada para a próxima hora nas ligas monitoradas.",
+                    message_thread_id=message.message_thread_id
+                )
+                
         elif comando == 'addliga':
             try:
                 id_liga = int(message.text.split()[1])
