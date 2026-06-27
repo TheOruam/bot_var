@@ -2,18 +2,295 @@
 import os
 import time
 import threading
-from flask import Flask
+from flask import Flask, render_template_string, request
 import telebot
 from comandos import registrar_comandos
-from analisador import verificar_e_enviar_pre_jogos, verificar_e_enviar_cronograma
+from analisador import verificar_e_enviar_pre_jogos, verificar_e_enviar_cronograma, obter_estatisticas_time, obter_elenco_time
 
 app = Flask(__name__)
+
+# Template HTML e CSS moderno e responsivo que imita perfeitamente as fotos do app de futebol
+HTML_TEMPLATE_PAINEL = """
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estatísticas do Time</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f6f8;
+            color: #333;
+            margin: 0;
+            padding: 10px;
+        }
+        .container {
+            background-color: #fff;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            border-bottom: 2px solid #00c2cb;
+            padding-bottom: 12px;
+            margin-bottom: 15px;
+        }
+        .header img {
+            width: 50px;
+            height: 50px;
+            margin-right: 12px;
+        }
+        .header-title h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #1a1a1a;
+        }
+        .header-title p {
+            margin: 2px 0 0 0;
+            font-size: 0.85rem;
+            color: #777;
+        }
+        .tabs {
+            display: flex;
+            background-color: #eaecef;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            background-color: #eaecef;
+            border: none;
+            color: #666;
+        }
+        .tab.active {
+            background-color: #00c2cb;
+            color: #fff;
+        }
+        .content {
+            display: none;
+        }
+        .content.active {
+            display: block;
+        }
+        .grid-circles {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+        }
+        .circle-stat {
+            text-align: center;
+        }
+        .circle {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 4px solid #00c2cb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.95rem;
+            margin-bottom: 5px;
+        }
+        .bar-container {
+            margin-bottom: 12px;
+        }
+        .bar-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .bar-bg {
+            background-color: #eaecef;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            display: flex;
+        }
+        .bar-fill-home {
+            background-color: #00c2cb;
+            height: 100%;
+        }
+        .bar-fill-away {
+            background-color: #ffb703;
+            height: 100%;
+        }
+        .player-row {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #eee;
+            padding: 8px 0;
+            font-size: 0.9rem;
+        }
+        .player-position {
+            font-size: 0.75rem;
+            background-color: #00c2cb;
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <img src="{{ time_logo }}" alt="Logo">
+        <div class="header-title">
+            <h2>{{ time_nome }}</h2>
+            <p>{{ pais }} | Fundado em {{ fundacao }}</p>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('stats')">STATISTICS</button>
+        <button class="tab" onclick="switchTab('squads')">SQUADS</button>
+    </div>
+
+    <!-- ABA ESTATÍSTICAS -->
+    <div id="stats" class="content active">
+        <div class="grid-circles">
+            <div class="circle-stat">
+                <div class="circle">{{ vitorias_percent }}%</div>
+                <div style="font-size:0.75rem; color:#777;">Wins</div>
+            </div>
+            <div class="circle-stat">
+                <div class="circle">{{ clean_sheets }}</div>
+                <div style="font-size:0.75rem; color:#777;">Clean Sheets</div>
+            </div>
+            <div class="circle-stat">
+                <div class="circle">{{ gols_feitos }}</div>
+                <div style="font-size:0.75rem; color:#777;">Gols Feitos</div>
+            </div>
+        </div>
+
+        <div class="bar-container">
+            <div class="bar-label">
+                <span>Casa ({{ vit_casa }})</span>
+                <span>Vitorias Totais: {{ total_vitorias }}</span>
+                <span>Fora ({{ vit_fora }})</span>
+            </div>
+            <div class="bar-bg">
+                <div class="bar-fill-home" style="width: {{ home_percent }}%"></div>
+                <div class="bar-fill-away" style="width: {{ away_percent }}%"></div>
+            </div>
+        </div>
+
+        <div class="bar-container">
+            <div class="bar-label">
+                <span>Casa ({{ gols_casa }})</span>
+                <span>Gols Feitos: {{ total_gols }}</span>
+                <span>Fora ({{ gols_fora }})</span>
+            </div>
+            <div class="bar-bg">
+                <div class="bar-fill-home" style="width: {{ home_gols_percent }}%"></div>
+                <div class="bar-fill-away" style="width: {{ away_gols_percent }}%"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ABA ELENCO -->
+    <div id="squads" class="content">
+        {% for p in elenco %}
+        <div class="player-row">
+            <span>{{ p.name }}</span>
+            <span class="player-position">{{ p.position }}</span>
+        </div>
+        {% endfor: %}
+    </div>
+</div>
+
+<script>
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.content').forEach(c => t = c.classList.remove('active'));
+        
+        event.currentTarget.classList.add('active');
+        document.getElementById(tabId).classList.add('active');
+    }
+</script>
+
+</body>
+</html>
+"""
 
 @app.route('/')
 def home():
     return "Bot Online e Operando com Sucesso!", 200
 
-# Inicialização do Bot
+@app.route('/painel_time')
+def painel_time():
+    """Rota que alimenta e desenha as estatísticas visuais do time."""
+    team_id = request.args.get('team_id', type=int)
+    league_id = request.args.get('league_id', default=71, type=int)
+    season = request.args.get('season', default=2024, type=int)
+    
+    if not team_id:
+        return "Erro: Parâmetro team_id em falta.", 400
+        
+    stats = obter_estatisticas_time(team_id, league_id, season)
+    elenco = obter_elenco_time(team_id)
+    
+    if not stats:
+        return "Erro ao obter estatísticas para este campeonato/ano na API.", 400
+        
+    # Processa os dados brutos recebidos da API-Football
+    nome = stats["team"]["name"]
+    logo = stats["team"]["logo"]
+    
+    played = stats["fixtures"]["played"]["total"] or 1
+    wins_total = stats["fixtures"]["wins"]["total"] or 0
+    clean_sheets = stats["clean_sheet"]["total"] or 0
+    gols_total = stats["goals"]["for"]["total"]["total"] or 0
+    
+    vit_casa = stats["fixtures"]["wins"]["home"] or 0
+    vit_fora = stats["fixtures"]["wins"]["away"] or 0
+    
+    # Cálculos de proporção para as barras de progresso
+    vitorias_percent = round((wins_total / played) * 100, 1)
+    home_percent = round((vit_casa / (wins_total or 1)) * 100, 1)
+    away_percent = 100 - home_percent
+    
+    gols_casa = stats["goals"]["for"]["total"]["home"] or 0
+    gols_fora = stats["goals"]["for"]["total"]["away"] or 0
+    home_gols_percent = round((gols_casa / (gols_total or 1)) * 100, 1)
+    away_gols_percent = 100 - home_gols_percent
+
+    return render_template_string(
+        HTML_TEMPLATE_PAINEL,
+        time_nome=nome,
+        time_logo=logo,
+        pais=stats["league"]["country"],
+        fundacao="2003",  # Estático ou buscado se necessário
+        vitorias_percent=vitorias_percent,
+        clean_sheets=clean_sheets,
+        gols_feitos=gols_total,
+        total_vitorias=wins_total,
+        vit_casa=vit_casa,
+        vit_fora=vit_fora,
+        home_percent=home_percent,
+        away_percent=away_percent,
+        total_gols=gols_total,
+        gols_casa=gols_casa,
+        gols_fora=gols_fora,
+        home_gols_percent=home_gols_percent,
+        away_gols_percent=away_gols_percent,
+        elenco=elenco[:15]  # Mostra os primeiros 15 do elenco
+    )
+
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TOKEN:
     raise ValueError("A variável de ambiente 'TELEGRAM_TOKEN' não está configurada.")
@@ -21,27 +298,15 @@ if not TOKEN:
 bot = telebot.TeleBot(TOKEN)
 registrar_comandos(bot)
 
-# ==========================================
-# AGENDADOR AUTOMÁTICO (PRÉ-JOGO E CRONOGRAMAS)
-# ==========================================
-
 def tarefa_agendada_loop():
-    # Aguarda 30 segundos ao iniciar para estabilizar as conexões de rede
     time.sleep(30)
     while True:
         try:
-            # 1. Verifica se um novo dia em Brasília (UTC-3) começou para enviar o cronograma das 00:00
             verificar_e_enviar_cronograma(bot)
-            
-            # 2. Varre as partidas que iniciam nas próximas horas (1 hora antes)
             verificar_e_enviar_pre_jogos(bot)
         except Exception as e:
             print(f"Erro no loop do agendador automático: {e}")
-        time.sleep(600)  # Aguarda 10 minutos para a próxima varredura
-
-# ==========================================
-# INICIALIZAÇÃO
-# ==========================================
+        time.sleep(600)
 
 def rodar_servidor_web():
     porta = int(os.getenv("PORT", 8080))
