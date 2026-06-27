@@ -111,77 +111,24 @@ def registrar_comandos(bot: TeleBot):
         analise_final = analisar_ao_vivo_e_formatar(dados_jogo)
         bot.send_message(message.chat.id, analise_final)
 
-    # ==========================================
-    # COMANDOS DE ADMINS (PERMITIDOS EM QUALQUER UMA DAS 4 SALAS)
-    # ==========================================
-
-    @bot.message_handler(commands=['bemvindo', 'bomdia', 'green', 'red', 'resenha', 'update', 'addliga', 'remliga', 'verligas', 'ids'])
-    def tratar_comandos_admin(message):
+# =====================================================================
+    # COMANDOS DE ADMINS - GRUPO 1: APENAS NA "MESA DOS ADMINS"
+    # =====================================================================
+    @bot.message_handler(commands=['update', 'addliga', 'remliga', 'verligas', 'ids'])
+    def comandos_criticos_admin(message):
         # 1. Verifica se o usuário é administrador
         if not eh_admin(bot, message):
             bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
             return
 
-        # 2. Verifica se a mensagem está sendo enviada em uma das salas autorizadas do fórum
-        thread_id = message.message_thread_id
-        if thread_id is not None:
-            thread_id = int(thread_id)
-            if thread_id not in [ID_PRE_JOGO, ID_AO_VIVO, ID_RESENHA, ID_ADMINS]:
-                bot.reply_to(message, "⚠️ Comandos administrativos nao sao permitidos nesta sala do forum.")
-                return
+        # 2. Restringe a execução estritamente para a Mesa dos Admins
+        if not verificar_sala(message, ID_ADMINS):
+            bot.reply_to(message, "⚠️ Este comando de configuracao so e aceito dentro da sala Mesa dos Admins.")
+            return
 
-        # Executa a ação do respectivo comando administrativo enviado
         comando = message.text.split()[0].replace('/', '').strip().lower()
 
-        if comando == 'bemvindo':
-            bot.send_message(message.chat.id, (
-                "Atencao cabine do VAR! Temos um novo integrante na mesa de operacoes!\n\n"
-                "Analisando o perfil do novato em nossa tela de transmissao...\n"
-                "Checando dados... Verificando batimentos cardiacos... Analisando a carteira...\n\n"
-                "DECISAO CONFIRMADA NO MONITOR:\n"
-                "Cadastro aprovado com sucesso! Seja muito bem-vindo ao VAR do Lucro!\n"
-                "Prepare sua planilha, ajuste sua stake e junte-se aos operadores profissionais de elite."
-            ))
-
-        elif comando == 'bomdia':
-            bot.send_message(message.chat.id, (
-                "Bom dia, mercado! Os monitores ja estao ligados e as APIs aquecidas!\n\n"
-                "Hoje o dia promete muitas oportunidades na nossa mesa de analise. "
-                "Lembre-se das regras de ouro para hoje:\n"
-                "1. Proteja seu capital (stake controlada).\n"
-                "2. Estude os relatorios antes de clicar.\n"
-                "3. Mantenha a calma de um monge, ganhando ou perdendo.\n\n"
-                "Que o valor esperado positivo esteja conosco. Bons investimentos a todos!"
-            ))
-
-        elif comando == 'green':
-            bot.send_message(message.chat.id, (
-                "EXPLODIU O GREEN DA NOSSA ANALISE!\n\n"
-                "A analise cirurgica do nosso relatorio bateu exatamente com o andamento do jogo!\n"
-                "Quem seguiu a gestao de banca e entrou na recomendacao do VAR do Lucro acabou de colocar dinheiro no bolso!\n"
-                "O mercado tentou segurar, mas a nossa leitura tecnica foi implacavel.\n"
-                "Parabens aos lucros coletados! Comemore sem perder o foco na proxima operacao."
-            ))
-
-        elif comando == 'red':
-            bot.send_message(message.chat.id, (
-                "Atenção operadores: Red detectado.\n\n"
-                "O futebol tem variaveis imprevisiveis que nenhuma estatistica consegue blindar 100 por cento.\n"
-                "Mas e aqui que se separam os amadores dos profissionais:\n"
-                "Seguir estritamente a nossa stake de 1 a 3 por cento garante que esse tropeço nao afete sua saude financeira.\n"
-                "Nao tente recuperar o valor perdido imediatamente com apostas desesperadas sem estudo.\n"
-                "Mantenha o controle emocional. A longo prazo, a consistencia matematica sempre vence."
-            ))
-
-        elif comando == 'resenha':
-            curiosidades = [
-                "Voce sabia que em 1998, um raio atingiu o gramado durante um jogo no Congo e matou todos os 11 jogadores de um time, enquanto o outro time saiu completamente ileso? Bizarro demais!",
-                "Na Inglaterra, o jogador Lee Todd levou o cartao vermelho mais rapido da historia: apenas 2 segundos de jogo! Ao ouvir o apito inicial do juiz perto do seu ouvido, ele exclamou: Caramba, isso foi muito alto! E foi expulso.",
-                "Em 1945, um jogo entre Arsenal e Dynamo de Moscou ocorreu sob uma névoa tao densa que ninguem enxergava nada. O Dynamo fez substituicoes sem ninguem perceber e acabou jogando com 15 jogadores em campo por quase meia hora!"
-            ]
-            bot.send_message(message.chat.id, "CURIOSIDADE DO VAR DO LUCRO\n\n" + random.choice(curiosidades))
-
-        elif comando == 'update':
+        if comando == 'update':
             bot.send_message(message.chat.id, "Iniciando auto-diagnostico dos sistemas...")
             status_gemini = "OK"
             status_api_football = "OK"
@@ -254,3 +201,104 @@ def registrar_comandos(bot: TeleBot):
                         bot.send_message(message.chat.id, "RESULTADO DA BUSCA DE LIGAS:\n\n" + "\n".join(linhas))
             except Exception as e:
                 bot.reply_to(message, f"Erro ao buscar IDs: {e}")
+
+
+    # =====================================================================
+    # COMANDOS DE ADMINS - GRUPO 2: PERMITIDOS EM QUALQUER UMA DAS 4 SALAS
+    # =====================================================================
+    @bot.message_handler(commands=['bemvindo', 'bomdia', 'green', 'red', 'resenha'])
+    def comandos_interacao_admin(message):
+        # 1. Verifica se o usuário é administrador
+        if not eh_admin(bot, message):
+            bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
+            return
+
+        # 2. Garante que o comando foi digitado em uma das 4 salas conhecidas do fórum
+        thread_id = message.message_thread_id
+        if thread_id is not None:
+            thread_id = int(thread_id)
+            if thread_id not in [ID_PRE_JOGO, ID_AO_VIVO, ID_RESENHA, ID_ADMINS]:
+                bot.reply_to(message, "⚠️ Comandos administrativos nao sao permitidos nesta sala do forum.")
+                return
+
+        comando = message.text.split()[0].replace('/', '').strip().lower()
+
+        if comando == 'bemvindo':
+            bot.send_message(message.chat.id, (
+                "Atencao cabine do VAR! Temos um novo integrante na mesa de operacoes!\n\n"
+                "Analisando o perfil do novato em nossa tela de transmissao...\n"
+                "Checando dados... Verificando batimentos cardiacos... Analisando a carteira...\n\n"
+                "DECISAO CONFIRMADA NO MONITOR:\n"
+                "Cadastro aprovado com sucesso! Seja muito bem-vindo ao VAR do Lucro!\n"
+                "Prepare sua planilha, ajuste sua stake e junte-se aos operadores profissionais de elite."
+            ))
+
+        elif comando == 'bomdia':
+            bot.send_message(message.chat.id, (
+                "Bom dia, mercado! Os monitores ja estao ligados e as APIs aquecidas!\n\n"
+                "Hoje o dia promete muitas oportunidades na nossa mesa de analise. "
+                "Lembre-se das regras de ouro para hoje:\n"
+                "1. Proteja seu capital (stake controlada).\n"
+                "2. Estude os relatorios antes de clicar.\n"
+                "3. Mantenha a calma de um monge, ganhando ou perdendo.\n\n"
+                "Que o valor esperado positivo esteja conosco. Bons investimentos a todos!"
+            ))
+
+        elif comando == 'green':
+            bot.send_message(message.chat.id, (
+                "EXPLODIU O GREEN DA NOSSA ANALISE!\n\n"
+                "A analise cirurgica do nosso relatorio bateu exatamente com o andamento do jogo!\n"
+                "Quem seguiu a gestao de banca e entrou na recomendacao do VAR do Lucro acabou de colocar dinheiro no bolso!\n"
+                "O mercado tentou segurar, mas a nossa leitura tecnica foi implacavel.\n"
+                "Parabens aos lucros coletados! Comemore sem perder o foco na proxima operacao."
+            ))
+
+        elif comando == 'red':
+            bot.send_message(message.chat.id, (
+                "Atenção operadores: Red detectado.\n\n"
+                "O futebol tem variaveis imprevisiveis que nenhuma estatistica consegue blindar 100 por cento.\n"
+                "Mas e aqui que se separam os amadores dos profissionais:\n"
+                "Seguir estritamente a nossa stake de 1 a 3 por cento garante que esse tropeço nao afete sua saude financeira.\n"
+                "Nao tente recuperar o valor perdido imediatamente com apostas desesperadas sem estudo.\n"
+                "Mantenha o controle emocional. A longo prazo, a consistencia matematica sempre vence."
+            ))
+
+        elif comando == 'resenha':
+            curiosidades = [
+                "Voce sabia que em 1998, um raio atingiu o gramado durante um jogo no Congo e matou todos os 11 jogadores de um time, enquanto o outro time saiu completamente ileso? Bizarro demais!",
+                "Na Inglaterra, o jogador Lee Todd levou o cartao vermelho mais rapido da historia: apenas 2 segundos de jogo! Ao ouvir o apito inicial do juiz perto do seu ouvido, ele exclamou: Caramba, isso foi muito alto! E foi expulso.",
+                "Em 1945, um jogo entre Arsenal e Dynamo de Moscou ocorreu sob uma névoa tao densa que ninguem enxergava nada. O Dynamo fez substituicoes sem ninguem perceber e acabou jogando com 15 jogadores em campo por quase meia hora!"
+            ]
+            bot.send_message(message.chat.id, "CURIOSIDADE DO VAR DO LUCRO\n\n" + random.choice(curiosidades))IDs: {e}")
+
+# =====================================================================
+    # MONITORAMENTO AUTOMÁTICO DE NOVOS MEMBROS (ENVIO NA SALA RESENHA)
+    # =====================================================================
+    @bot.message_handler(content_types=['new_chat_members'])
+    def boas_vindas_automatico(message):
+        """
+        Detecta automaticamente a entrada de novos usuários no grupo 
+        e envia a mensagem de acolhimento do VAR na sala de Resenha.
+        """
+        # Se a sala de resenha não estiver configurada no Render, evita o envio
+        if not ID_RESENHA:
+            return
+
+        texto_boas_vindas = (
+            "Atencao cabine do VAR! Temos um novo integrante na mesa de operacoes!\n\n"
+            "Analisando o perfil do novato em nossa tela de transmissao...\n"
+            "Checando dados... Verificando batimentos cardiacos... Analisando a carteira...\n\n"
+            "DECISAO CONFIRMADA NO MONITOR:\n"
+            "Cadastro aprovado com sucesso! Seja muito bem-vindo ao VAR do Lucro!\n"
+            "Prepare sua planilha, ajuste sua stake e junte-se aos operadores profissionais de elite."
+        )
+
+        try:
+            # Envia automaticamente a mensagem direcionando para a sala de resenha
+            bot.send_message(
+                chat_id=message.chat.id,
+                text=texto_boas_vindas,
+                message_thread_id=ID_RESENHA
+            )
+        except Exception as e:
+            print(f"Erro ao processar as boas-vindas automatizadas: {e}")
