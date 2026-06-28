@@ -6,7 +6,7 @@ import analisador
 TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 bot = telebot.TeleBot(TOKEN)
 
-# Identificadores de salas/tópicos (Vêm das variáveis de ambiente)
+# Identificadores de canais/tópicos (Vêm das variáveis de ambiente)
 TOPICO_PRE_JOGO = os.getenv("TOPICO_PRE_JOGO")
 TOPICO_AO_VIVO = os.getenv("TOPICO_AO_VIVO")
 TOPICO_RESENHA = os.getenv("TOPICO_RESENHA")
@@ -15,7 +15,7 @@ CHAT_ID_GERAL = os.getenv("TELEGRAM_CHAT_ID")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 
 def obter_id_topico(message):
-    """Retorna o ID do tópico (thread) atual da mensagem de forma limpa."""
+    """Retorna o ID do tópico atual da mensagem de forma limpa."""
     if message.reply_to_message and message.reply_to_message.forum_topic_created_metadata:
         return str(message.message_thread_id)
     if hasattr(message, 'message_thread_id'):
@@ -23,7 +23,7 @@ def obter_id_topico(message):
     return None
 
 def eh_admin(message):
-    """Verifica se o usuário é administrador do chat ou se a mensagem veio do tópico de admins."""
+    """Verifica se o usuário possui permissão administrativa no grupo."""
     topico_atual = obter_id_topico(message)
     if topico_atual == TOPICO_ADMINS:
         return True
@@ -67,10 +67,8 @@ def cmd_resenha(message):
     resposta = analisador.perguntar_ao_gemini(prompt)
     bot.reply_to(message, resposta, parse_mode="HTML")
 
-# Acolhimento Automático de Membros que entram no grupo
 @bot.message_handler(content_types=['new_chat_members'])
 def acolher_membro_automatico(message):
-    # Envia a mensagem no tópico correto de Resenha/Bate-papo se estiver configurado
     thread_id = int(TOPICO_RESENHA) if TOPICO_RESENHA else None
     prompt = "Dê as boas-vindas calorosas a um novo membro no canal VAR do Lucro, sem utilizar asteriscos."
     resposta = analisador.perguntar_ao_gemini(prompt)
@@ -82,11 +80,9 @@ def acolher_membro_automatico(message):
 
 @bot.message_handler(commands=['cronograma'])
 def cmd_cronograma(message):
-    # Apenas administradores podem acionar o cronograma manual na sala Admin
     if not eh_admin(message):
         bot.reply_to(message, "Apenas administradores podem rodar este comando.")
         return
-
     enviar_cronograma_diario()
 
 def enviar_cronograma_diario():
@@ -99,7 +95,6 @@ def enviar_cronograma_diario():
 
     mensagens = ["⚽ <b>VAR DO LUCRO - CRONOGRAMA DIÁRIO</b>\n──────────"]
     for j in jogos:
-        # Transforma o horário UTC em horário de Brasília para exibição
         try:
             dt_utc = datetime.fromisoformat(j["data_utc"].replace("Z", "+00:00"))
             dt_br = dt_utc.astimezone(timezone(timedelta(hours=-3)))
@@ -144,7 +139,16 @@ def cmd_aovivo(message):
             )
             return
 
-        # Montagem do layout tático do placar ao vivo utilizando barras proporcionais em Python
+        # Simulação parametrizada de arbitragem obtida para processamento estatístico
+        arbitro_partida = {
+            "media_cartoes": 5.2,
+            "media_faltas": 26.0,
+            "rigor_cartao_por_falta": 0.20
+        }
+        
+        # Realiza os cálculos matemáticos preditivos
+        projecoes = analisador.calcular_projecoes_secundarias(dados, arbitro_partida)
+
         layout = (
             f"🏟️ <b>{dados['liga']}</b>\n"
             f"⚽ <b>{dados['mandante']} {dados['gols_m']}</b> x <b>{dados['gols_v']} {dados['visitante']}</b>\n"
@@ -155,12 +159,12 @@ def cmd_aovivo(message):
             f"{dados['barra_posse']}\n"
             f"🔹 Chutes ao Gol: {dados['cg_m']} vs {dados['cg_v']}\n"
             f"{dados['barra_chutes']}\n"
-            f"🔹 Ataques Totais: {dados['atq_m']} vs {dados['atq_v']}\n"
-            f"{dados['barra_ataques']}\n"
-            f"🔹 Ataques Perigosos: {dados['atqp_m']} vs {dados['atqp_v']}\n"
-            f"{dados['barra_perigo']}\n"
             f"🔹 Escanteios: {dados['esc_m']} vs {dados['esc_v']}\n"
             f"{dados['barra_escanteios']}\n\n"
+            f"📈 <b>PROJEÇÕES MATEMÁTICAS DO VAR (90 MIN):</b>\n"
+            f"📐 Escanteios Projetados: <b>{projecoes['escanteios_final_projetado']}</b>\n"
+            f"🟨 Cartões Projetados: <b>{projecoes['cartoes_final_projetado']}</b>\n"
+            f"🏃‍♂️ Faltas Projetadas: <b>{projecoes['faltas_final_projetado']}</b>\n\n"
             f"🤖 <b>PROCESSANDO ANÁLISE DE IA...</b>"
         )
 
@@ -171,26 +175,36 @@ def cmd_aovivo(message):
             parse_mode="HTML"
         )
 
-        # Envia os dados para a IA estruturar o sinal de Over Gols ou Entrada +EV
         prompt_ia = (
-            f"Analise esta partida ao vivo no minuto {dados['tempo']}. "
-            f"Time Mandante: {dados['mandante']} ({dados['gols_m']} gols, posse {dados['posse_m']}%, ataques perigosos {dados['atqp_m']}, escanteios {dados['esc_m']}). "
-            f"Time Visitante: {dados['visitante']} ({dados['gols_v']} gols, posse {dados['posse_v']}%, ataques perigosos {dados['atqp_v']}, escanteios {dados['esc_v']}). "
-            "Gere uma recomendação de aposta em tempo real (+EV) divertida e analítica (ex: Over Gols, Ambas Marcam, Escanteios, Back Mandante/Visitante) fundamentada nestas estatísticas. "
-            "Adicione um link no fim direcionando o usuário de maneira natural para a Superbet usando este formato estrito: <a href='https://superbet.com'>Aproveitar Oportunidade na Superbet</a>"
+            f"AJA COMO O ANALISTA QUANTITATIVO DO CANAL VAR DO LUCRO.\n\n"
+            f"O jogo atual está aos {dados['tempo']} minutos. Placar: {dados['mandante']} {dados['gols_m']} x {dados['gols_v']} {dados['visitante']}.\n"
+            f"Nossos algoritmos em Python calcularam as seguintes projeções para o final da partida (90 min):\n"
+            f"- Linha projetada de escanteios totais: {projecoes['escanteios_final_projetado']}\n"
+            f"- Linha projetada de cartões totais: {projecoes['cartoes_final_projetado']}\n"
+            f"- Linha projetada de faltas totais: {projecoes['faltas_final_projetado']}\n\n"
+            f"Dados ao vivo de pressão: Escanteios atuais: {dados['esc_m'] + dados['esc_v']}. Ataques perigosos do mandante: {dados['atqp_m']}. Ataques perigosos do visitante: {dados['atqp_v']}.\n\n"
+            "Gere uma recomendação de aposta de alto valor para os mercados secundários (Escanteios, Cartões ou Faltas). "
+            "Justifique a dica com base nas projeções que calculamos e use o Critério de Kelly Fracionário para sugerir a stake segura. "
+            "Insira um link formatado em HTML direcionando o usuário para a Superbet da seguinte forma: <a href='https://superbet.com'>Aproveitar Oportunidade na Superbet</a>. "
+            "Não utilize asteriscos em nenhuma hipótese na resposta."
         )
 
         analise_ia = analisador.perguntar_ao_gemini(prompt_ia)
-
-        layout_final = layout.replace("🤖 <b>PROCESSANDO ANÁLISE DE IA...</b>", f"🤖 <b>SINAL DO VAR DO LUCRO:</b>\n\n{analise_ia}")
+        layout_final = layout.replace("🤖 <b>PROCESSANDO ANÁLISE DE IA...</b>", f"🤖 <b>SINAL DE MERCADOS SECUNDÁRIOS:</b>\n\n{analise_ia}")
         
-        bot.edit_message_text(
+        # Envia o sinal final estruturado para o tópico correto do Ao Vivo se configurado
+        thread_envio = int(TOPICO_AO_VIVO) if TOPICO_AO_VIVO else message.message_thread_id
+        
+        bot.send_message(
+            CHAT_ID_GERAL,
             layout_final,
-            chat_id=message.chat.id,
-            message_id=msg_carregando.message_id,
+            message_thread_id=thread_envio,
             parse_mode="HTML",
             disable_web_page_preview=True
         )
+
+        # Deleta a mensagem temporária de consulta
+        bot.delete_message(message.chat.id, msg_carregando.message_id)
 
     except Exception as e:
         print(f"[ERRO AO VIVO] Falha no comando ao vivo: {str(e)}")
@@ -214,12 +228,10 @@ def cmd_painel(message):
 
     time_busca = partes[1]
     
-    # Valida se a URL do Web App foi definida
     if not WEBHOOK_URL:
         bot.reply_to(message, "Configuração de painel pendente (WEBHOOK_URL não configurada).")
         return
 
-    # Gera link parametrizado do Web App
     url_painel = f"{WEBHOOK_URL}/painel?time={time_busca}"
     
     markup = InlineKeyboardMarkup()
@@ -274,7 +286,6 @@ def cmd_resumo(message):
 
         resumo_gerado = analisador.perguntar_ao_gemini(prompt_ia)
         
-        # Posta o balanço final diretamente na sala do Pré-Jogo para a comunidade
         bot.send_message(
             CHAT_ID_GERAL,
             f"🏆 <b>VAR DO LUCRO - AUDITORIA DE RESULTADOS</b>\n\n{resumo_gerado}",
