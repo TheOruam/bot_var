@@ -21,10 +21,6 @@ def obter_cliente_gemini() -> genai.Client:
 # =====================================================================
 
 def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
-    """
-    Realiza requisições para a API-Football utilizando um sistema inteligente de fallback.
-    Aceita múltiplas chaves configuradas na variável 'API_FOOTBALL_KEY' separadas por vírgula.
-    """
     raw_keys = os.getenv("API_FOOTBALL_KEY", "")
     chaves = [k.strip() for k in raw_keys.split(",") if k.strip()]
     
@@ -42,7 +38,6 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
             resposta = requests.get(url, headers=headers, timeout=12)
             dados = resposta.json()
             
-            # REGRA BLINDADA: Se não houver a chave "response" OU se houver "errors" ativo, a chave FALHOU
             is_erro = "response" not in dados or dados.get("errors")
             
             if is_erro:
@@ -51,19 +46,17 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
                 ultimo_erro = erro_detalhado
                 continue
                 
-            # Se a requisição foi bem sucedida e possui "response", retorna os dados na hora!
             return dados
             
         except Exception as e:
             print(f"⚠️ [Fallback API] Erro de rede com a chave {i+1}: {e}. Pulando para a próxima...")
             ultimo_erro = str(e)
             
-    # Se todas as chaves configuradas falharem
     print("❌ [Fallback API] Alerta Crítico: Todas as chaves de API fornecidas falharam.")
     return {"response": [], "errors": ultimo_erro}
 
 # =====================================================================
-# SEÇÃO 1: ANÁLISE PRÉ-JOGO E CRONOGRAMA DIÁRIO (00:00 BRT)
+# SEÇÃO 1: ANÁLISE PRÉ-JOGO, CRONOGRAMA E RESUMO DETALHADO COM VERIFICAÇÃO DE GREENS
 # =====================================================================
 
 def obter_jogos_do_dia() -> List[Dict[str, Any]]:
@@ -81,10 +74,124 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     print(f"Data BRT consultada: {hoje_brt} | Total jogos mundo: {len(todos_jogos)} | Filtrados: {len(jogos_filtrados)}")
     return jogos_filtrados
 
-def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
+def obter_dados_recap_dia() -> List[Dict[str, Any]]:
+    """
+    Busca as partidas de hoje e extrai as estatísticas detalhadas de escanteios, 
+    cartões e faltas dos jogos que já finalizaram.
+    """
+    jogos = obter_jogos_do_dia()
+    resumos_com_stats = []
+    
+    for jogo in jogos:
+        status = jogo["fixture"]["status"]["short"]
+        fixture_id = jogo["fixture"]["id"]
+        
+        # Só buscamos dados avançados de partidas finalizadas
+        if status in ["FT", "AET", "PEN"]:
+            gols_casa = jogo["goals"]["home"]
+            gols_fora = jogo["goals"]["away"]
+            
+            stats_jogo = {
+                "campeonato": jogo["league"]["name"],
+                "casa": jogo["teams"]["home"]["name"],
+                "fora": jogo["teams"]["away"]["name"],
+                "placar": f"{gols_casa} - {gols_fora}",
+                "escanteios": "0 - 0",
+                "cartoes_amarelos": "0 - 0",
+                "cartoes_vermelhos": "0 - 0",
+                "faltas": "0 - 0"
+            }
+            
+            try:
+                dados_stats = fazer_requisicao_api(f"fixtures/statistics?fixture={fixture_id}")
+                stats_response = dados_stats.get("response", [])
+                
+                for team_stat in stats_response:
+                    equipe = "home" if team_stat["team"]["name"] == jogo["teams"]["home"]["name"] else "away"
+                    for s in team_stat["statistics"]:
+                        tipo = s["type"]
+                        valor = s["value"] if s["value"] is not None else 0
+                        
+                        if tipo == "Corner Kicks":
+                            idx = 0 if equipe == "home" else 1
+                            partes = stats_jogo["escanteios"].split(" - ")
+                            partes[idx] = str(valor)
+                            stats_jogo["escanteios"] = " - ".join(partes)
+                        elif tipo == "Yellow Cards":
+                            idx = 0 if equipe == "home" else 1
+                            partes = stats_jogo["cartoes_amarelos"].split(" - ")
+                            partes[idx] = str(valor)
+                            stats_jogo["cartoes_amarelos"] = " - ".join(partes)
+                        elif tipo == "Red Cards":
+                            idx = 0 if equipe == "home" else 1
+                            partes = stats_jogo["cartoes_vermelhos"].split(" - ")
+                            partes[idx] = str(valor)
+                            stats_jogo["cartoes_vermelhos"] = " - ".join(partes)
+                        elif tipo == "Fouls":
+                            idx = 0 if equipe == "home" else 1
+                            partes = stats_jogo["faltas"].split(" - ")
+                            partes[idx] = str(valor)
+                            stats_jogo["faltas"] = " - ".join(partes)
+            except Exception as e:
+                print(f"Erro ao obter estatísticas detalhadas para partida {fixture_id}: {e}")
+                
+            resumos_com_stats.append(stats_jogo)
+        else:
+            resumos_com_stats.append({
+                "campeonato": jogo["league"]["name"],
+                "casa": jogo["teams"]["home"]["name"],
+                "fora": jogo["teams"]["away"]["name"],
+                "placar": "Nao iniciado ou Em andamento",
+                "escanteios": "N/A",
+                "cartoes_amarelos": "N/A",
+                "cartoes_vermelhos": "N/A",
+                "faltas": "N/A"
+            })
+            
+    return resumos_com_stats
+
+def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
+    """
+    Envia a lista de partidas enriquecidas com estatísticas para o Gemini,
+    gerando um resumo diário profissional e auditando se as previsões bateram.
+    """
     try:
         client = obter_cliente_gemini()
         
+        prompt = (
+            "Você é o analista-chefe da cabine do 'VAR do Lucro'. Escreva um balanço diário de fechamento de mercado "
+            "altamente profissional, detalhado e técnico para a nossa comunidade de investimentos esportivos.\n\n"
+            
+            "INSTRUÇÕES DE AUDITORIA E VERIFICAÇÃO (MUITO IMPORTANTE):\n"
+            "Com base nos resultados e dados das partidas fornecidos abaixo, monte para cada jogo finalizado um painel de "
+            "verificação mostrando quais dos mercados padrão seriam classificados como GREEN 🟢 ou RED 🔴.\n"
+            "Exemplos de auditoria que você deve fazer:\n"
+            "- Se a soma de gols da partida for maior que 2.5: Over 2.5 Gols -> GREEN 🟢 (caso contrário: RED 🔴)\n"
+            "- Se ambos os times marcaram gols (placar ex: 2-1, 1-1): Ambas Marcam Sim -> GREEN 🟢 (caso contrário: RED 🔴)\n"
+            "- Se a soma dos escanteios for maior ou igual a 10: Over 9.5 Escanteios -> GREEN 🟢 (caso contrário: RED 🔴)\n"
+            "- Se a soma de cartões amarelos for maior ou igual a 5: Over 4.5 Cartões -> GREEN 🟢 (caso contrário: RED 🔴)\n\n"
+            
+            "INSTRUÇÕES DE FORMATAÇÃO:\n"
+            "1. Agrupe as partidas por campeonato, listando o placar e as estatísticas de cada time (Gols, Escanteios, Cartões, Faltas).\n"
+            "2. Traduza obrigatoriamente os nomes de todos os times, países e ligas para o Português do Brasil.\n"
+            "3. Escreva uma análise curta no final destacando como foi o rendimento estatístico do dia de hoje de forma geral.\n"
+            "4. NÃO use asteriscos (*) em nenhuma parte da mensagem.\n"
+            "5. Use emojis moderados e quebras de linha elegantes para organizar as seções de forma que seja agradável de ler no celular.\n\n"
+            f"Dados consolidados das partidas de hoje:\n{dados_recap}"
+        )
+        
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        return response.text
+    except Exception as e:
+        print(f"Erro ao gerar resumo diário avançado via IA: {e}")
+        return "Erro ao processar o fechamento de mercado detalhado."
+
+def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
+    try:
+        client = obter_cliente_gemini()
         lista_resumida = []
         for jogo in jogos:
             lista_resumida.append({
@@ -93,7 +200,6 @@ def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
                 "fora": jogo["teams"]["away"]["name"],
                 "hora_utc": jogo["fixture"]["date"]
             })
-
         prompt = (
             "Você é o 'VAR do Lucro'. Organize os jogos listados abaixo em um cronograma diário limpo.\n\n"
             "REGRAS DE CONVERSÃO E TRADUÇÃO:\n"
@@ -104,11 +210,7 @@ def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
             "5. Adicione emojis esportivos ou bandeiras.\n\n"
             f"Lista de jogos do dia:\n{lista_resumida}"
         )
-
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         return response.text
     except Exception as e:
         print(f"Erro ao gerar cronograma de jogos via IA: {e}")
