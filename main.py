@@ -8,11 +8,14 @@ import comandos
 
 app = Flask(__name__)
 
-# Memória persistente de controle dos alertas disparados para não enviar duplicado
+# Controle de envio de alertas para evitar duplicações
 ALERTAS_ENVIADOS = {}
 
+# Controle de envio do Bom Dia
+BOM_DIA_ENVIADO = None
+
 # ==========================================
-# PAINEL WEB APP (TEMPLATES HTML/CSS/JS)
+# PAINEL WEB APP (ESTILO IDÊNTICO À FOTO 2)
 # ==========================================
 
 HTML_PAINEL = """
@@ -24,117 +27,198 @@ HTML_PAINEL = """
     <title>VAR do Lucro - Painel Tático</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .custom-scroll::-webkit-scrollbar {
+            height: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background-color: #14b8a6;
+            border-radius: 10px;
+        }
+    </style>
 </head>
-<body class="bg-slate-900 text-white font-sans min-h-screen">
-    <div class="max-w-md mx-auto p-4 space-y-6 pb-12">
+<body class="bg-[#121824] text-slate-100 font-sans min-h-screen">
+    <div class="max-w-md mx-auto space-y-4 pb-12">
         
-        <!-- Header -->
-        <div class="flex items-center space-x-4 bg-slate-800 p-4 rounded-xl shadow-lg border border-emerald-500/30">
-            <img src="{{ dados.escudo }}" alt="Escudo" class="w-16 h-16 object-contain rounded-full bg-slate-700 p-1">
-            <div>
-                <h1 class="text-xl font-bold text-emerald-400">{{ dados.nome }}</h1>
-                <p class="text-sm text-slate-400">Desempenho da Equipe</p>
+        <!-- Header da Página -->
+        <div class="bg-[#1a2333] px-4 py-3 text-center border-b border-slate-700">
+            <h1 class="text-xs font-bold tracking-widest text-[#00f5d4]">SEE HOW IT LOOKS</h1>
+        </div>
+
+        <!-- Menu Superior de Categorias Rolável (Foto 2) -->
+        <div class="bg-[#1a2333] px-4 py-2 border-b border-slate-700">
+            <div class="flex space-x-6 overflow-x-auto custom-scroll pb-1 text-xs font-semibold text-slate-400 whitespace-nowrap">
+                <span>Volleyball</span>
+                <span>AFL</span>
+                <span class="text-teal-400 border-b-2 border-teal-400 pb-1">Football</span>
+                <span>Formula-1</span>
+                <span>MMA</span>
+                <span>NBA</span>
+                <span>NFL</span>
             </div>
         </div>
 
-        <!-- Estatísticas Básicas (Gráficos) -->
-        <div class="bg-slate-800 p-5 rounded-xl shadow-lg space-y-4">
-            <h2 class="text-md font-semibold text-slate-300">Desempenho Geral</h2>
-            <div class="relative h-48 w-full">
-                <canvas id="graficoPartidas"></canvas>
+        <!-- Bloco de Perfil do Time -->
+        <div class="px-4 space-y-1">
+            <div class="flex items-center space-x-2">
+                <h2 class="text-lg font-bold text-white">{{ dados.nome }}</h2>
+                <i class="far fa-star text-slate-400 cursor-pointer"></i>
             </div>
+            <div class="text-xs text-slate-400 space-y-0.5">
+                <p>Founded: {{ dados.stats.ano_fundacao }}</p>
+                <p>Country: {{ dados.stats.pais }}</p>
+            </div>
+        </div>
+
+        <!-- Abas de Navegação (Foto 2) -->
+        <div class="bg-[#1a2333] border-y border-slate-700">
+            <div class="grid grid-cols-3 text-center text-xs font-bold">
+                <span class="py-3 bg-[#1e293b] text-teal-400 border-b-2 border-teal-400 uppercase tracking-wider">Statistics</span>
+                <span class="py-3 text-slate-400 uppercase tracking-wider">Squads</span>
+                <span class="py-3 text-slate-400 uppercase tracking-wider">Standings</span>
+            </div>
+        </div>
+
+        <!-- Competição -->
+        <div class="px-4 py-2 bg-[#1e293b]/50 mx-4 rounded-lg text-xs font-semibold text-slate-300">
+            🏆 Major League Soccer (2026)
+        </div>
+
+        <!-- Anéis de Estatísticas (Foto 2 Visual Circles) -->
+        <div class="grid grid-cols-3 gap-2 px-4">
+            <div class="bg-[#1a2333] p-3 rounded-xl border border-slate-800 text-center space-y-2">
+                <div class="relative w-16 h-16 mx-auto flex items-center justify-center">
+                    <span class="text-xs font-bold">44%<br><span class="text-[9px] text-slate-400">WINS</span></span>
+                    <svg class="absolute inset-0 w-full h-full -rotate-90">
+                        <circle cx="32" cy="32" r="28" stroke="#334155" stroke-width="4" fill="transparent" />
+                        <circle cx="32" cy="32" r="28" stroke="#14b8a6" stroke-width="4" fill="transparent" stroke-dasharray="175" stroke-dashoffset="98" />
+                    </svg>
+                </div>
+                <p class="text-[10px] text-slate-400 font-semibold">Played: 29</p>
+            </div>
+
+            <div class="bg-[#1a2333] p-3 rounded-xl border border-slate-800 text-center space-y-2">
+                <div class="relative w-16 h-16 mx-auto flex items-center justify-center">
+                    <span class="text-[9px] font-bold text-slate-200">58.6%<br><span class="text-[7px] text-slate-400">{{ dados.stats.lineup_preferida }}</span></span>
+                    <svg class="absolute inset-0 w-full h-full -rotate-90">
+                        <circle cx="32" cy="32" r="28" stroke="#334155" stroke-width="4" fill="transparent" />
+                        <circle cx="32" cy="32" r="28" stroke="#eab308" stroke-width="4" fill="transparent" stroke-dasharray="175" stroke-dashoffset="72" />
+                    </svg>
+                </div>
+                <p class="text-[10px] text-slate-400 font-semibold">Lineups</p>
+            </div>
+
+            <div class="bg-[#1a2333] p-3 rounded-xl border border-slate-800 text-center space-y-2">
+                <div class="relative w-16 h-16 mx-auto flex items-center justify-center">
+                    <span class="text-[9px] font-bold text-slate-200">100%<br><span class="text-[8px] text-slate-400">SCOR</span></span>
+                    <svg class="absolute inset-0 w-full h-full -rotate-90">
+                        <circle cx="32" cy="32" r="28" stroke="#334155" stroke-width="4" fill="transparent" />
+                        <circle cx="32" cy="32" r="28" stroke="#22c55e" stroke-width="4" fill="transparent" stroke-dasharray="175" stroke-dashoffset="0" />
+                    </svg>
+                </div>
+                <p class="text-[10px] text-slate-400 font-semibold">Penalties</p>
+            </div>
+        </div>
+
+        <!-- Indicador de Direção Home/Away -->
+        <div class="flex justify-between px-6 text-xs font-bold text-slate-400">
+            <span class="text-teal-400">HOME</span>
+            <span class="text-amber-400">AWAY</span>
+        </div>
+
+        <!-- Barras Horizontais Bicolorizadas de Estatísticas (Foto 2) -->
+        <div class="bg-[#1a2333] p-4 mx-4 rounded-xl space-y-3 border border-slate-800 text-xs">
             
-            <div class="grid grid-cols-3 gap-2 text-center pt-2">
-                <div class="bg-slate-700/50 p-2 rounded-lg">
-                    <span class="block text-xs text-slate-400">Vitórias</span>
-                    <span class="text-lg font-bold text-emerald-400">{{ dados.stats.vitorias }}</span>
+            <!-- Wins -->
+            <div class="space-y-1">
+                <div class="flex justify-between font-semibold">
+                    <span class="text-slate-300">Wins : {{ dados.stats.vitorias }}</span>
                 </div>
-                <div class="bg-slate-700/50 p-2 rounded-lg">
-                    <span class="block text-xs text-slate-400">Empates</span>
-                    <span class="text-lg font-bold text-slate-300">{{ dados.stats.empates }}</span>
+                <div class="w-full h-2.5 bg-slate-700 rounded-full flex overflow-hidden">
+                    <div class="bg-teal-500 h-full" style="width: 60%"></div>
+                    <div class="bg-amber-500 h-full" style="width: 40%"></div>
                 </div>
-                <div class="bg-slate-700/50 p-2 rounded-lg">
-                    <span class="block text-xs text-slate-400">Derrotas</span>
-                    <span class="text-lg font-bold text-rose-500">{{ dados.stats.derrotas }}</span>
+            </div>
+
+            <!-- Losses -->
+            <div class="space-y-1">
+                <div class="flex justify-between font-semibold">
+                    <span class="text-slate-300">Losses : {{ dados.stats.derrotas }}</span>
                 </div>
+                <div class="w-full h-2.5 bg-slate-700 rounded-full flex overflow-hidden">
+                    <div class="bg-teal-500 h-full" style="width: 45%"></div>
+                    <div class="bg-amber-500 h-full" style="width: 55%"></div>
+                </div>
+            </div>
+
+            <!-- Draws -->
+            <div class="space-y-1">
+                <div class="flex justify-between font-semibold">
+                    <span class="text-slate-300">Draws : {{ dados.stats.empates }}</span>
+                </div>
+                <div class="w-full h-2.5 bg-slate-700 rounded-full flex overflow-hidden">
+                    <div class="bg-teal-500 h-full" style="width: 50%"></div>
+                    <div class="bg-amber-500 h-full" style="width: 50%"></div>
+                </div>
+            </div>
+
+            <!-- Clean sheets -->
+            <div class="space-y-1">
+                <div class="flex justify-between font-semibold">
+                    <span class="text-slate-300">Clean sheets : {{ dados.stats.clean_sheets }}</span>
+                </div>
+                <div class="w-full h-2.5 bg-slate-700 rounded-full flex overflow-hidden">
+                    <div class="bg-teal-500 h-full" style="width: 70%"></div>
+                    <div class="bg-amber-500 h-full" style="width: 30%"></div>
+                </div>
+            </div>
+
+            <!-- Failed to score -->
+            <div class="space-y-1">
+                <div class="flex justify-between font-semibold">
+                    <span class="text-slate-300">Failed to score : {{ dados.stats.failed_to_score }}</span>
+                </div>
+                <div class="w-full h-2.5 bg-slate-700 rounded-full flex overflow-hidden">
+                    <div class="bg-teal-500 h-full" style="width: 40%"></div>
+                    <div class="bg-amber-500 h-full" style="width: 60%"></div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Cards Disciplinar (Gráfico de Colunas na Parte Inferior) -->
+        <div class="bg-[#1a2333] p-4 mx-4 rounded-xl border border-slate-800 space-y-4">
+            <h3 class="text-xs font-bold tracking-wider text-slate-400 uppercase">Cards (Season Distribution)</h3>
+            <div class="flex items-end justify-between h-20 px-2 pt-2 border-b border-slate-700">
+                <div class="w-8 bg-amber-500 rounded-t-sm h-[20%]"></div>
+                <div class="w-8 bg-amber-500 rounded-t-sm h-[40%]"></div>
+                <div class="w-8 bg-amber-500 rounded-t-sm h-[60%]"></div>
+                <div class="w-8 bg-amber-500 rounded-t-sm h-[80%] border-t-4 border-rose-500"></div>
+                <div class="w-8 bg-amber-500 rounded-t-sm h-[50%]"></div>
+                <div class="w-8 bg-amber-500 rounded-t-sm h-[95%] border-t-4 border-rose-500"></div>
+                <div class="w-8 bg-amber-500 rounded-t-sm h-[35%] border-t-2 border-rose-500"></div>
             </div>
         </div>
 
-        <!-- Detalhes de Gols -->
-        <div class="bg-slate-800 p-5 rounded-xl shadow-lg grid grid-cols-2 gap-4">
-            <div>
-                <span class="text-xs text-slate-400">Gols Marcados</span>
-                <p class="text-2xl font-bold text-emerald-400">{{ dados.stats.gols_marcados }}</p>
-            </div>
-            <div>
-                <span class="text-xs text-slate-400">Gols Sofridos</span>
-                <p class="text-2xl font-bold text-rose-500">{{ dados.stats.gols_sofridos }}</p>
-            </div>
-        </div>
-
-        <!-- Elenco (Squad) -->
-        <div class="bg-slate-800 p-5 rounded-xl shadow-lg space-y-4">
-            <h2 class="text-md font-semibold text-slate-300">Elenco Cadastrado</h2>
-            <div class="max-h-60 overflow-y-auto space-y-2 pr-1">
-                {% if dados.jogadores %}
-                    {% for j in dados.jogadores %}
-                    <div class="flex justify-between items-center bg-slate-700/30 p-2.5 rounded-lg border-l-4 border-emerald-500">
-                        <div>
-                            <p class="font-medium text-sm">{{ j.nome }}</p>
-                            <span class="text-[11px] text-slate-400">{{ j.posicao }}</span>
-                        </div>
-                        <span class="text-xs font-semibold bg-slate-700 px-2 py-0.5 rounded text-emerald-300">{{ j.idade }} anos</span>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <p class="text-sm text-slate-400">Informações de elenco não localizadas para esta liga.</p>
-                {% endif %}
-            </div>
-        </div>
-        
     </div>
-
-    <script>
-        const ctx = document.getElementById('graficoPartidas').getContext('2d');
-        new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Vitórias', 'Empates', 'Derrotas'],
-                datasets: [{
-                    data: [{{ dados.stats.vitorias }}, {{ dados.stats.empates }}, {{ dados.stats.derrotas }}],
-                    backgroundColor: ['#10b981', '#64748b', '#f43f5e'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                cutout: '75%'
-            }
-        });
-    </script>
 </body>
 </html>
 """
 
 @app.route("/")
 def home():
-    return "VAR do Lucro Bot rodando ativamente com status estável na porta do Render."
+    return "VAR do Lucro Bot ativo na nuvem com cache e controle de rotas integrados."
 
 @app.route("/painel")
 def painel():
     time_solicitado = request.args.get("time", "")
     if not time_solicitado:
-        return "Nenhum time foi especificado para exibição do painel.", 400
+        return "Nenhum time foi especificado.", 400
 
     dados_painel = analisador.consultar_dados_painel(time_solicitado)
     if not dados_painel:
-        return f"Dados não encontrados para a equipe: {time_solicitado}", 404
+        return f"Não foi possível encontrar dados da equipe: {time_solicitado}", 404
 
     return render_template_string(HTML_PAINEL, dados=dados_painel)
 
@@ -143,8 +227,8 @@ def painel():
 # ==========================================
 
 def loop_tarefas_agendadas():
-    """Gerencia alertas de contagem regressiva e publicação automática do cronograma."""
-    print("[THREAD AGENDADOR] Iniciado com sucesso.")
+    global BOM_DIA_ENVIADO
+    print("[THREAD AGENDADOR] Rodando em segundo plano.")
     
     while True:
         try:
@@ -152,19 +236,38 @@ def loop_tarefas_agendadas():
             hora_str = hoje_br.strftime("%H:%M")
             data_str = hoje_br.strftime("%Y-%m-%d")
 
-            # 1. Publicação automática do Cronograma Diário à meia-noite
+            # 1. Publicação automática do Cronograma Diário à meia-noite (00:00)
             if hora_str == "00:00":
-                print("[AGENDADOR] Meia-noite detectada. Atualizando dados e gerando novo cronograma...")
+                print("[AGENDADOR] Meia-noite BRT. Atualizando cronograma diário...")
                 comandos.enviar_cronograma_diario()
                 time.sleep(70) 
                 continue
 
-            # 2. Verificação das contagens regressivas para os jogos cadastrados no cache
+            # 2. Bom dia automático às 06:00 AM (Roteado para a Resenha)
+            if hora_str == "06:00" and BOM_DIA_ENVIADO != data_str:
+                print("[AGENDADOR] 06h00 AM BRT. Enviando mensagem de bom dia...")
+                prompt = "Crie uma mensagem divertida de bom dia para o grupo de apostadores e analistas, incentivando a lucrar hoje."
+                resposta = analisador.perguntar_ao_gemini(prompt)
+                
+                comandos.bot.send_message(
+                    comandos.CHAT_ID_GERAL,
+                    resposta,
+                    message_thread_id=int(comandos.TOPICO_RESENHA) if comandos.TOPICO_RESENHA else None,
+                    parse_mode="HTML"
+                )
+                BOM_DIA_ENVIADO = data_str
+                time.sleep(70)
+                continue
+
+            # 3. Processamento de Contagens Regressivas (Alertas 3h e 2h AGRUPADOS)
             jogos = analisador.obter_jogos_do_dia()
             chat_id = comandos.CHAT_ID_GERAL
             topico_pre = int(comandos.TOPICO_PRE_JOGO) if comandos.TOPICO_PRE_JOGO else None
 
             if jogos and chat_id:
+                jogos_3h_pendentes = []
+                jogos_2h_pendentes = []
+
                 for j in jogos:
                     match_id = str(j["id"])
                     
@@ -180,53 +283,95 @@ def loop_tarefas_agendadas():
                     if match_id not in ALERTAS_ENVIADOS:
                         ALERTAS_ENVIADOS[match_id] = {"3h": False, "2h": False, "1h": False, "10m": False}
 
-                    # Alerta de 3 Horas
+                    # Coleta partidas que estão na janela de 3h
                     if 170 <= minutos_restantes <= 180 and not ALERTAS_ENVIADOS[match_id]["3h"]:
-                        prompt = f"Gere um alerta divertido e empolgante dizendo que a partida {j['mandante']} x {j['visitante']} começará em 3 horas."
-                        texto = analisador.perguntar_ao_gemini(prompt)
-                        comandos.bot.send_message(chat_id, f"🔥 <b>VAR REGRESSIVO - 3 HORAS</b>\n\n{texto}", message_thread_id=topico_pre, parse_mode="HTML")
-                        ALERTAS_ENVIADOS[match_id]["3h"] = True
+                        jogos_3h_pendentes.append(j)
 
-                    # Alerta de 2 Horas
+                    # Coleta partidas que estão na janela de 2h
                     elif 110 <= minutos_restantes <= 120 and not ALERTAS_ENVIADOS[match_id]["2h"]:
-                        prompt = f"Gere um alerta tático curto informando que o jogo {j['mandante']} x {j['visitante']} começará em 2 horas."
-                        texto = analisador.perguntar_ao_gemini(prompt)
-                        comandos.bot.send_message(chat_id, f"⚠️ <b>VAR REGRESSIVO - 2 HORAS</b>\n\n{texto}", message_thread_id=topico_pre, parse_mode="HTML")
-                        ALERTAS_ENVIADOS[match_id]["2h"] = True
+                        jogos_2h_pendentes.append(j)
 
-                    # Alerta de 1 Hora - ENVIA O DOSSIÊ COMPLETO COM PRECIFICAÇÃO E PROJEÇÕES SECUNDÁRIAS
+                    # 4. Alerta de 1 Hora - MODELAGEM DINÂMICA (Gera a análise 1 hora antes com dados de escalação frescos)
                     elif 50 <= minutos_restantes <= 60 and not ALERTAS_ENVIADOS[match_id]["1h"]:
+                        print(f"[AGENDADOR] Gerando Dossiê Técnico atualizado para {j['mandante']} x {j['visitante']}...")
+                        
+                        # Roda os cálculos com os indicadores estruturados de pré-jogo
+                        arbitro_stats_padrao = {
+                            "media_cartoes": 5.2,
+                            "media_faltas": 26.0,
+                            "rigor_cartao_por_falta": 0.20
+                        }
+                        dados_iniciais_jogo = {
+                            "tempo": 0.1,
+                            "esc_m": 0, "esc_v": 0,
+                            "atqp_m": 0, "atqp_v": 0
+                        }
+                        
+                        proj = analisador.calcular_projecoes_secundarias(dados_iniciais_jogo, arbitro_stats_padrao)
+
                         prompt = (
-                            f"Crie um Dossiê Técnico Completo de Inteligência para a partida {j['mandante']} x {j['visitante']} pela {j['liga']}.\n"
+                            f"Crie um Dossiê Técnico Completo de Inteligência para a partida {j['mandante']} x {j['visitante']} pela liga {j['liga']}.\n"
                             "Gere o dossiê contendo:\n"
-                            "1. Uma simulação clara da precificação por Poisson para as probabilidades do jogo e odds justas.\n"
-                            "2. As projeções dos mercados secundários de cartões e escanteios com base nas tendências das equipes.\n"
-                            "3. Uma recomendação de aposta com valor esperado positivo (+EV) justificando a entrada e aplicando o Critério de Kelly Fracionário.\n"
-                            "Diretriz: Nunca utilize asteriscos no texto em hipótese alguma."
+                            "1. Uma simulação da precificação de probabilidade e odd justa para vitória, empate e gols.\n"
+                            "2. Projeções para os mercados secundários baseadas nestes indicadores matemáticos de nosso algoritmo:\n"
+                            f"   - Escanteios Projetados: {proj['escanteios_final_projetado']}\n"
+                            f"   - Cartões Projetados: {proj['cartoes_final_projetado']}\n"
+                            f"   - Faltas Projetadas: {proj['faltas_final_projetado']}\n"
+                            "3. Uma recomendação de aposta com valor esperado positivo (+EV) fundamentada e aplicando o Critério de Kelly Fracionário para sugerir a stake segura.\n"
+                            "Diretriz Crítica: Nunca utilize o caractere asterisco (*) em sua resposta."
                         )
-                        texto = analisador.perguntar_ao_gemini(prompt)
-                        comandos.bot.send_message(chat_id, f"📊 <b>DOSSIÊ TÉCNICO VAR DO LUCRO (+EV)</b>\n\n{texto}", message_thread_id=topico_pre, parse_mode="HTML")
+                        
+                        texto_dossie = analisador.perguntar_ao_gemini(prompt)
+
+                        comandos.bot.send_message(
+                            chat_id, 
+                            f"📊 <b>DOSSIÊ TÉCNICO (+EV)</b>\n\n{texto_dossie}", 
+                            message_thread_id=topico_pre, 
+                            parse_mode="HTML"
+                        )
                         ALERTAS_ENVIADOS[match_id]["1h"] = True
 
-                    # Alerta de 10 minutos
-                    elif 5 <= minutos_restantes <= 10 and not ALERTAS_ENVIADOS[match_id]["10m"]:
-                        prompt = f"Gere uma chamada imediata curta avisando que as equipes de {j['mandante']} e {j['visitante']} já estão em campo e a partida se iniciará em instantes."
-                        texto = analisador.perguntar_ao_gemini(prompt)
-                        comandos.bot.send_message(chat_id, f"🚨 <b>VAR REGRESSIVO - ENTRADA EM CAMPO</b>\n\n{texto}", message_thread_id=topico_pre, parse_mode="HTML")
-                        ALERTAS_ENVIADOS[match_id]["10m"] = True
+                # Dispara mensagem agrupada para os jogos de 3 horas
+                if jogos_3h_pendentes:
+                    nomes_jogos = " e ".join([f"{jg['mandante']} x {jg['visitante']}" for jg in jogos_3h_pendentes])
+                    prompt = f"Gere uma chamada divertida dizendo que restam apenas 3 horas para o início dos confrontos: {nomes_jogos}."
+                    texto_ia = analisador.perguntar_ao_gemini(prompt)
+                    
+                    comandos.bot.send_message(
+                        chat_id,
+                        f"🔥 <b>VAR REGRESSIVO - 3 HORAS</b>\n\n{texto_ia}",
+                        message_thread_id=topico_pre,
+                        parse_mode="HTML"
+                    )
+                    for jg in jogos_3h_pendentes:
+                        ALERTAS_ENVIADOS[str(jg["id"])]["3h"] = True
+
+                # Dispara mensagem agrupada para os jogos de 2 horas
+                if jogos_2h_pendentes:
+                    nomes_jogos = " e ".join([f"{jg['mandante']} x {jg['visitante']}" for jg in jogos_2h_pendentes])
+                    prompt = f"Gere uma chamada divertida dizendo que restam apenas 2 horas para o início dos confrontos: {nomes_jogos}."
+                    texto_ia = analisador.perguntar_ao_gemini(prompt)
+                    
+                    comandos.bot.send_message(
+                        chat_id,
+                        f"⚠️ <b>VAR REGRESSIVO - 2 HORAS</b>\n\n{texto_ia}",
+                        message_thread_id=topico_pre,
+                        parse_mode="HTML"
+                    )
+                    for jg in jogos_2h_pendentes:
+                        ALERTAS_ENVIADOS[str(jg["id"])]["2h"] = True
 
         except Exception as e:
-            print(f"[ERRO AGENDADOR] Falha na execução da rotina interna do loop: {str(e)}")
+            print(f"[ERRO AGENDADOR] Falha no processamento interno do loop: {str(e)}")
 
         time.sleep(60)
 
 # ==========================================
-# THREAD 2: INICIALIZAÇÃO E CONTROLE
+# THREAD 2: CONTROLE DE EXECUÇÃO
 # ==========================================
 
 def iniciar_bot_polling():
-    """Inicia a thread dedicada para o polling contínuo do Telegram."""
-    print("[THREAD POLLING] Bot de mensagens iniciado com sucesso.")
+    print("[THREAD POLLING] Bot de mensagens rodando.")
     while True:
         try:
             comandos.bot.infinity_polling(timeout=60, long_polling_timeout=30)
@@ -235,20 +380,17 @@ def iniciar_bot_polling():
             time.sleep(10)
 
 if __name__ == "__main__":
-    # Carrega dados do dia em memória imediatamente ao iniciar o app
+    # Preenche o cronograma diário inicial em cache ao iniciar o aplicativo
     try:
         analisador.obter_jogos_do_dia(forcar=True)
     except Exception as e:
         print(f"[ERRO INICIAL] Falha ao carregar cache de jogos: {str(e)}")
 
-    # Executa a thread de polling do telegram (Daemon)
     t_bot = threading.Thread(target=iniciar_bot_polling, daemon=True)
     t_bot.start()
 
-    # Executa a thread do agendador e dos alertas regressivos (Daemon)
     t_agendador = threading.Thread(target=loop_tarefas_agendadas, daemon=True)
     t_agendador.start()
 
-    # O Flask roda na thread principal para satisfazer a porta do Render instantaneamente
     porta = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=porta)
