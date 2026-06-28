@@ -126,13 +126,19 @@ def enviar_cronograma_diario():
         except Exception:
             data_formatada = "DATA INDEFINIDA"
 
+        # TRADUÇÃO ATIVA DOS NOMES DOS TIMES (FOTO 1 STYLE)
+        mandante_pt = analisador.traduzir_nome(j['mandante'])
+        visitante_pt = analisador.traduzir_nome(j['visitante'])
+        liga_pt = analisador.traduzir_nome(j['liga'])
+        estadio_pt = analisador.traduzir_nome(j['estadio'])
+
         flag_m = analisador.obter_bandeira(j["mandante"])
         flag_v = analisador.obter_bandeira(j["visitante"])
 
         card = (
             f"  {data_formatada}\n"
-            f"  {flag_m} {j['mandante']} - {flag_v} {j['visitante']}\n"
-            f"  ({j['estadio']})\n"
+            f"  {flag_m} {mandante_pt} - {flag_v} {visitante_pt}\n"
+            f"  ({estadio_pt})\n"
             f"──────────────────────────"
         )
         mensagem.append(card)
@@ -168,6 +174,11 @@ def cmd_aovivo(message):
             )
             return
 
+        # TRADUÇÃO ATIVA DOS NOMES DA PARTIDA AO VIVO (PT-BR)
+        mandante_pt = analisador.traduzir_nome(dados['mandante'])
+        visitante_pt = analisador.traduzir_nome(dados['visitante'])
+        liga_pt = analisador.traduzir_nome(dados['liga'])
+
         arbitro_partida = {
             "media_cartoes": 5.2,
             "media_faltas": 26.0,
@@ -181,11 +192,11 @@ def cmd_aovivo(message):
         barra_escanteios = analisador.gerar_barra_proporcional(dados["esc_m"], dados["esc_v"])
 
         layout = (
-            f"🏟️ <b>{dados['liga']}</b>\n"
-            f"⚽ <b>{dados['mandante']} {dados['gols_m']}</b> x <b>{dados['gols_v']} {dados['visitante']}</b>\n"
+            f"🏟️ <b>{liga_pt}</b>\n"
+            f"⚽ <b>{mandante_pt} {dados['gols_m']}</b> x <b>{dados['gols_v']} {visitante_pt}</b>\n"
             f"⏱️ Tempo: {dados['tempo']}' ({dados['status']})\n\n"
             f"📊 <b>ESTATÍSTICAS EM TEMPO REAL (FOTO 2 STYLE):</b>\n"
-            f"🔵 {dados['mandante']} | 🔴 {dados['visitante']}\n\n"
+            f"🔵 {mandante_pt} | 🔴 {visitante_pt}\n\n"
             f"Posse de Bola: {dados['posse_m']}% vs {dados['posse_v']}%\n"
             f"[{barra_posse}]\n"
             f"Chutes ao Gol: {dados['cg_m']} vs {dados['cg_v']}\n"
@@ -208,14 +219,14 @@ def cmd_aovivo(message):
 
         prompt_ia = (
             f"AJA COMO O ANALISTA QUANTITATIVO DO CANAL VAR DO LUCRO.\n\n"
-            f"O jogo atual está aos {dados['tempo']} minutos. Placar: {dados['mandante']} {dados['gols_m']} x {dados['gols_v']} {dados['visitante']}.\n"
+            f"O jogo atual está aos {dados['tempo']} minutos. Placar: {mandante_pt} {dados['gols_m']} x {dados['gols_v']} {visitante_pt}.\n"
             f"Nossas projeções matemáticas:\n"
             f"- Escanteios finais totais projetados: {projecoes['escanteios_final_projetado']}\n"
             f"- Cartões finais totais projetados: {projecoes['cartoes_final_projetado']}\n"
             f"Gere um palpite esportivo ao vivo de alto valor (+EV) fundamentado nestas estatísticas. "
             "Defina o tamanho ideal da aposta usando o Critério de Kelly Fracionário (Kelly 1/4). "
             "Inclua o link de afiliado exatamente dessa forma: <a href='https://superbet.com'>Aproveitar Oportunidade na Superbet</a>. "
-            "Nunca utilize asteriscos no texto."
+            "Nunca utilize asteriscos no texto e mantenha todos os termos traduzidos para o Português do Brasil."
         )
 
         analise_ia = analisador.perguntar_ao_gemini(prompt_ia)
@@ -291,8 +302,12 @@ def cmd_resumo(message):
 
         relatorio_jogos = []
         for j in jogos:
+            mandante_pt = analisador.traduzir_nome(j['mandante'])
+            visitante_pt = analisador.traduzir_nome(j['visitante'])
+            liga_pt = analisador.traduzir_nome(j['liga'])
+            
             relatorio_jogos.append(
-                f"- {j['mandante']} {j['gols_mandante']} x {j['gols_visitante']} {j['visitante']} ({j['liga']})"
+                f"- {mandante_pt} {j['gols_mandante']} x {j['gols_visitante']} {visitante_pt} ({liga_pt})"
             )
         
         relatorio_texto = "\n".join(relatorio_jogos)
