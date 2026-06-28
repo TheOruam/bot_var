@@ -33,6 +33,7 @@ def verificar_sala(message, id_sala_permitida: int) -> bool:
     return int(thread_id) == id_sala_permitida
 
 def traduzir_busca_para_ingles(termo: str) -> str:
+    """Traduz termos em português para inglês para compatibilidade com seleções."""
     try:
         traducao = GoogleTranslator(source='pt', target='en').translate(termo)
         print(f"Busca original: '{termo}' | Traduzido para API: '{traducao}'")
@@ -124,7 +125,9 @@ def registrar_comandos(bot: TeleBot):
         for jogo in jogos_hoje:
             casa = jogo["teams"]["home"]["name"].lower()
             fora = jogo["teams"]["away"]["name"].lower()
-            if args_min in casa or args_min in fora:
+            
+            # Cruzamento duplo de segurança (Português ou Inglês)
+            if args.lower().strip() in casa or args.lower().strip() in fora or args_min in casa or args_min in fora:
                 jogo_encontrado = jogo
                 break
                 
@@ -142,11 +145,7 @@ def registrar_comandos(bot: TeleBot):
             message_thread_id=message.message_thread_id
         )
         relatorio = gerar_relatorio_pre_jogo(jogo_encontrado)
-        bot.send_message(
-            chat_id=message.chat.id, 
-            text=relatorio,
-            message_thread_id=message.message_thread_id
-        )
+        bot.send_message(chat_id=message.chat.id, text=relatorio, message_thread_id=message.message_thread_id)
 
     # =====================================================================
     # COMANDO: AO VIVO (APENAS NA SALA SINAIS AO VIVO)
@@ -162,9 +161,13 @@ def registrar_comandos(bot: TeleBot):
             bot.reply_to(message, "⚠️ Digite o nome do time. Exemplo: /aovivo Real Madrid")
             return
         
-        bot.reply_to(message, f"🔍 Traduzindo e procurando partida ao vivo para '{args}'...")
+        bot.reply_to(message, f"🔍 Procurando partida ao vivo para '{args}'...")
+        
+        args_original = args.strip()
         args_ingles = traduzir_busca_para_ingles(args)
-        dados_jogo = buscar_jogo_ao_vivo_por_time(args_ingles)
+        
+        # Passa o nome original e o traduzido para a busca ao vivo inteligente
+        dados_jogo = buscar_jogo_ao_vivo_por_time(args_original, args_ingles)
         
         if not dados_jogo:
             bot.send_message(
@@ -339,7 +342,6 @@ def registrar_comandos(bot: TeleBot):
                 
                 texto_resumo = gerar_resumo_diario_ia(dados_recap)
                 
-                # Envia o balanço consolidado direto na sala Pré-Jogo (público)
                 bot.send_message(
                     chat_id=int(os.getenv("TELEGRAM_CHAT_ID")),
                     text=texto_resumo,
