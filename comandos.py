@@ -78,7 +78,8 @@ def registrar_comandos(bot: TeleBot):
                 "• /verligas: Mostra os IDs das ligas monitoradas no momento.\n"
                 "• /scan: Força a varredura de jogos para a proxima hora imediatamente.\n"
                 "• /cronograma: Forca a geracao e envio da tabela de jogos de hoje para a sala Pre-Jogo.\n"
-                "• /painel <time>: Abre o painel visual com graficos e elenco do time."
+                "• /painel <time>: Abre o painel visual com graficos e elenco do time.\n"
+                "• /resumo: Coleta placares e estatísticas de hoje e gera um balanço de fechamento com Greens."
             )
             bot.send_message(
                 chat_id=message.chat.id, 
@@ -111,7 +112,6 @@ def registrar_comandos(bot: TeleBot):
             return
             
         bot.reply_to(message, f"🔍 Traduzindo e buscando cronograma de hoje para '{args}'...")
-        
         args_ingles = traduzir_busca_para_ingles(args)
         
         jogos_hoje = obter_jogos_do_dia()
@@ -160,7 +160,6 @@ def registrar_comandos(bot: TeleBot):
             return
         
         bot.reply_to(message, f"🔍 Traduzindo e procurando partida ao vivo para '{args}'...")
-        
         args_ingles = traduzir_busca_para_ingles(args)
         
         dados_jogo = buscar_jogo_ao_vivo_por_time(args_ingles)
@@ -189,7 +188,7 @@ def registrar_comandos(bot: TeleBot):
     # =====================================================================
     # COMANDOS DE ADMINS - GRUPO 1: APENAS NA "MESA DOS ADMINS"
     # =====================================================================
-    @bot.message_handler(commands=['update', 'addliga', 'remliga', 'verligas', 'ids', 'scan', 'cronograma', 'painel'])
+    @bot.message_handler(commands=['update', 'addliga', 'remliga', 'verligas', 'ids', 'scan', 'cronograma', 'painel', 'resumo'])
     def comandos_criticos_admin(message):
         if not eh_admin(bot, message):
             bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
@@ -220,13 +219,13 @@ def registrar_comandos(bot: TeleBot):
                 status_gemini = f"FALHA ({e})"
                 
             try:
-                # Testa usando a primeira chave da lista de redundância
+                # Testa usando a primeira chave de redundância configurada
                 primeira_chave = [k.strip() for k in chave_football.split(",") if k.strip()][0]
                 headers = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': primeira_chave}
                 res = requests.get("https://v3.football.api-sports.io/status", headers=headers, timeout=5)
                 dados_status = res.json()
                 
-                # Validação blindada do diagnóstico
+                # Validação real se a chave está suspensa ou inválida
                 if "response" not in dados_status or dados_status.get("errors"):
                     erro_recebido = dados_status.get("errors") if dados_status.get("errors") else dados_status
                     status_api_football = f"FALHA (Erro retornado: {erro_recebido})"
@@ -279,7 +278,6 @@ def registrar_comandos(bot: TeleBot):
                 message_thread_id=message.message_thread_id
             )
             
-            # Executa uma busca rápida direta para diagnosticar a API
             headers = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': os.getenv("API_FOOTBALL_KEY")}
             from datetime import datetime, timezone, timedelta
             agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
@@ -324,6 +322,44 @@ def registrar_comandos(bot: TeleBot):
                     message_thread_id=message.message_thread_id
                 )
 
+        elif comando == 'resumo':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="🔄 Coletando estatísticas detalhadas de escanteios, cartões e faltas dos jogos de hoje...",
+                message_thread_id=message.message_thread_id
+            )
+            
+            from analisador import obter_dados_recap_dia, gerar_resumo_diario_ia
+            dados_recap = obter_dados_recap_dia()
+            
+            if dados_recap:
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="🧠 Analisando resultados e auditando Greens/Reds com a IA do VAR do Lucro...",
+                    message_thread_id=message.message_thread_id
+                )
+                
+                texto_resumo = gerar_resumo_diario_ia(dados_recap)
+                
+                # Envia o balanço consolidado direto na sala Pré-Jogo (público)
+                bot.send_message(
+                    chat_id=int(os.getenv("TELEGRAM_CHAT_ID")),
+                    text=texto_resumo,
+                    message_thread_id=ID_PRE_JOGO
+                )
+                
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="✅ Balanço diário consolidado e auditado postado com sucesso na sala Pré-Jogo!",
+                    message_thread_id=message.message_thread_id
+                )
+            else:
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="ℹ️ Nenhuma partida registrada hoje nas ligas monitoradas para gerar o fechamento.",
+                    message_thread_id=message.message_thread_id
+                )
+
         elif comando == 'painel':
             nome_time = message.text.replace('/painel', '').strip()
             if not nome_time:
@@ -341,7 +377,11 @@ def registrar_comandos(bot: TeleBot):
                 times_encontrados = res_busca.json().get("response", [])
                 
                 if not times_encontrados:
-                    bot.send_message(message.chat.id, f"❌ Nao encontrei nenhum time com o nome '{nome_time}'.", message_thread_id=message.message_thread_id)
+                    bot.send_message(
+                        chat_id=message.chat.id, 
+                        text=f"❌ Nao encontrei nenhum time com o nome '{nome_time}'.",
+                        message_thread_id=message.message_thread_id
+                    )
                     return
                     
                 time_id = times_encontrados[0]["team"]["id"]
