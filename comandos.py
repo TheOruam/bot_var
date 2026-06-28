@@ -1,668 +1,572 @@
+# comandos.py
 import os
-import telebot
-from telebot.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
-from datetime import datetime, timezone, timedelta
-import analisador
+import random
+import requests
+from telebot import TeleBot
+from deep_translator import GoogleTranslator
+from analisador import buscar_jogo_ao_vivo_por_time, analisar_ao_vivo_e_formatar, obter_jogos_do_dia, gerar_relatorio_pre_jogo, obter_cliente_gemini, buscar_time_por_nome
 
-TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-bot = telebot.TeleBot(TOKEN)
+# Captura os IDs das salas do ambiente (padrão 0 caso não configurados)
+ID_PRE_JOGO = int(os.getenv("TOPICO_PRE_JOGO", "0"))
+ID_AO_VIVO = int(os.getenv("TOPICO_AO_VIVO", "0"))
+ID_RESENHA = int(os.getenv("TOPICO_RESENHA", "0"))
+ID_ADMINS = int(os.getenv("TOPICO_ADMINS", "0"))
 
-# Identificadores de tópicos e canais
-TOPICO_PRE_JOGO = os.getenv("TOPICO_PRE_JOGO")
-TOPICO_AO_VIVO = os.getenv("TOPICO_AO_VIVO")
-TOPICO_RESENHA = os.getenv("TOPICO_RESENHA")
-TOPICO_ADMINS = os.getenv("TOPICO_ADMINSimport os
-import telebot
-from telebot.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
-from datetime import datetime, timezone, timedelta
-import analisador
-
-TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-bot = telebot.TeleBot(TOKEN)
-
-# Identificadores de tópicos e canais
-TOPICO_PRE_JOGO = os.getenv("TOPICO_PRE_JOGO")
-TOPICO_AO_VIVO = os.getenv("TOPICO_AO_VIVO")
-TOPICO_RESENHA = os.getenv("TOPICO_RESENHA")
-TOPICO_ADMINS = os.getenv("TOPICO_ADMINS")
-CHAT_ID_GERAL = os.getenv("TELEGRAM_CHAT_ID")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
-
-def obter_id_topico(message):
-    if message.reply_to_message and message.reply_to_message.forum_topic_created_metadata:
-        return str(message.message_thread_id)
-    if hasattr(message, 'message_thread_id'):
-        return str(message.message_thread_id)
-    return None
-
-def eh_admin(message):
-    topico_atual = obter_id_topico(message)
-    if topico_atual == TOPICO_ADMINS:
+def eh_admin(bot: TeleBot, message) -> bool:
+    """Verifica se o remetente é administrador do grupo."""
+    if message.chat.type == "private":
         return True
     try:
-        status = bot.get_chat_member(message.chat.id, message.from_user.id).status
-        return status in ["creator", "administrator"]
-    except Exception:
+        status_membro = bot.get_chat_member(message.chat.id, message.from_user.id).status
+        return status_membro in ["administrator", "creator"]
+    except Exception as e:
+        print(f"Erro ao verificar permissões de admin: {e}")
         return False
 
-def validar_canal_comando(message, topico_esperado, nome_sala):
-    topico_atual = obter_id_topico(message)
-    if topico_atual != topico_esperado:
-        bot.reply_to(
-            message, 
-            f"❌ <b>Acesso Negado</b>\nEste comando só pode ser executado no canal/tópico de {nome_sala}.", 
-            parse_mode="HTML"
-        )
-        return False
-    return True
-
-# ==========================================
-# INTERAÇÕES DO ADMIN E DE COMUNIDADE
-# ==========================================
-
-@bot.message_handler(commands=['bomdia'])
-def cmd_bomdia(message):
-    if not validar_canal_comando(message, TOPICO_RESENHA, "Resenha"):
-        return
-    prompt = "Crie uma mensagem divertida de bom dia para o grupo de apostadores e analistas, incentivando a lucrar hoje."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.reply_to(message, resposta, parse_mode="HTML")
-
-@bot.message_handler(commands=['bemvindo'])
-def cmd_bemvindo(message):
-    if not validar_canal_comando(message, TOPICO_RESENHA, "Resenha"):
-        return
-    prompt = "Gere uma saudação divertida e acolhedora para um novo membro que acabou de entrar no grupo VAR do Lucro."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.reply_to(message, resposta, parse_mode="HTML")
-
-@bot.message_handler(commands=['green'])
-def cmd_green(message):
-    if not validar_canal_comando(message, TOPICO_RESENHA, "Resenha"):
-        return
-    prompt = "Comemore um GREEN espetacular de forma enérgica e provocativa, mantendo a seriedade analítica do VAR do Lucro."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.reply_to(message, resposta, parse_mode="HTML")
-
-@bot.message_handler(commands=['red'])
-def cmd_red(message):
-    if not validar_canal_comando(message, TOPICO_RESENHA, "Resenha"):
-        return
-    prompt = "Gere uma mensagem analítica e resiliente sobre um RED que aconteceu, destacando que a gestão de banca e longo prazo nos salvará."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.reply_to(message, resposta, parse_mode="HTML")
-
-@bot.message_handler(commands=['resenha'])
-def cmd_resenha(message):
-    if not validar_canal_comando(message, TOPICO_RESENHA, "Resenha"):
-        return
-    prompt = "Inicie um debate divertido chamando a comunidade para debater as melhores entradas do mercado para as próximas horas."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.reply_to(message, resposta, parse_mode="HTML")
-
-@bot.message_handler(content_types=['new_chat_members'])
-def acolher_membro_automatico(message):
-    thread_id = int(TOPICO_RESENHA) if TOPICO_RESENHA else None
-    prompt = "Dê as boas-vindas calorosas a um novo membro no canal VAR do Lucro, sem utilizar asteriscos."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.send_message(message.chat.id, resposta, message_thread_id=thread_id, parse_mode="HTML")
-
-# ==========================================
-# CRONOGRAMA DIÁRIO (ROTEAMENTO PRE-JOGO)
-# ==========================================
-
-@bot.message_handler(commands=['cronograma'])
-def cmd_cronograma(message):
-    if not eh_admin(message):
-        bot.reply_to(message, "Apenas administradores podem rodar este comando.")
-        return
-    
-    bot.reply_to(message, "<i>Gerando e enviando cronograma para o canal Pré-Jogo...</i>", parse_mode="HTML")
-    enviar_cronograma_diario()
-
-def enviar_cronograma_diario():
-    jogos = analisador.obter_jogos_do_dia(forcar=True)
-    topico_envio = int(TOPICO_PRE_JOGO) if TOPICO_PRE_JOGO else None
-
-    if not jogos:
-        texto = "⚽ <b>VAR DO LUCRO - CRONOGRAMA DIÁRIO</b>\n\nNenhuma partida monitorada para hoje."
-        bot.send_message(CHAT_ID_GERAL, texto, message_thread_id=topico_envio, parse_mode="HTML")
-        return
-
-    mensagem = ["⚽ <b>VAR DO LUCRO - CRONOGRAMA DIÁRIO</b>\n"]
-    
-    for j in jogos:
-        try:
-            dt_utc = datetime.fromisoformat(j["data_utc"].replace("Z", "+00:00"))
-            dt_br = dt_utc.astimezone(timezone(timedelta(hours=-3)))
-            data_formatada = dt_br.strftime("%d %b, %H:%M").upper()
-        except Exception:
-            data_formatada = "DATA INDEFINIDA"
-
-        # TRADUÇÃO ATIVA DOS NOMES DOS TIMES (EN_PARA_PT)
-        mandante_pt = analisador.traduzir_en_para_pt(j['mandante'])
-        visitante_pt = analisador.traduzir_en_para_pt(j['visitante'])
-        estadio_pt = analisador.traduzir_en_para_pt(j['estadio'])
-
-        flag_m = analisador.obter_bandeira(j["mandante"])
-        flag_v = analisador.obter_bandeira(j["visitante"])
-
-        card = (
-            f"  {data_formatada}\n"
-            f"  {flag_m} {mandante_pt} - {flag_v} {visitante_pt}\n"
-            f"  ({estadio_pt})\n"
-            f"──────────────────────────"
-        )
-        mensagem.append(card)
-
-    texto_final = "\n\n".join(mensagem)
-    bot.send_message(CHAT_ID_GERAL, texto_final, message_thread_id=topico_envio, parse_mode="HTML")
-
-# ==========================================
-# SINAL AO VIVO (/aovivo)
-# ==========================================
-
-@bot.message_handler(commands=['aovivo'])
-def cmd_aovivo(message):
-    if not validar_canal_comando(message, TOPICO_AO_VIVO, "Sinais Ao Vivo"):
-        return
-
-    partes = message.text.split(maxsplit=1)
-    if len(partes) < 2:
-        bot.reply_to(message, "Use o formato: /aovivo NOME_DO_TIME", parse_mode="HTML")
-        return
-
-    termo = partes[1]
-    msg_carregando = bot.reply_to(message, "<i>Consultando dados em tempo real...</i>", parse_mode="HTML")
-
-    try:
-        dados = analisador.consultar_dados_ao_vivo(termo)
-        if not dados:
-            bot.edit_message_text(
-                "❌ <b>Partida Não Encontrada</b>\nNão foi identificado nenhum jogo ao vivo ocorrendo agora para o time informado.",
-                chat_id=message.chat.id,
-                message_id=msg_carregando.message_id,
-                parse_mode="HTML"
-            )
-            return
-
-        # TRADUÇÃO ATIVA DOS NOMES DA PARTIDA AO VIVO (EN_PARA_PT)
-        mandante_pt = analisador.traduzir_en_para_pt(dados['mandante'])
-        visitante_pt = analisador.traduzir_en_para_pt(dados['visitante'])
-        liga_pt = analisador.traduzir_en_para_pt(dados['liga'])
-
-        arbitro_partida = {
-            "media_cartoes": 5.2,
-            "media_faltas": 26.0,
-            "rigor_cartao_por_falta": 0.20
-        }
-        
-        projecoes = analisador.calcular_projecoes_secundarias(dados, arbitro_partida)
-
-        barra_posse = analisador.gerar_barra_proporcional(dados["posse_m"], dados["posse_v"])
-        barra_chutes = analisador.gerar_barra_proporcional(dados["cg_m"], dados["cg_v"])
-        barra_escanteios = analisador.gerar_barra_proporcional(dados["esc_m"], dados["esc_v"])
-
-        layout = (
-            f"🏟️ <b>{liga_pt}</b>\n"
-            f"⚽ <b>{mandante_pt} {dados['gols_m']}</b> x <b>{dados['gols_v']} {visitante_pt}</b>\n"
-            f"⏱️ Tempo: {dados['tempo']}' ({dados['status']})\n\n"
-            f"📊 <b>ESTATÍSTICAS EM TEMPO REAL (FOTO 2 STYLE):</b>\n"
-            f"🔵 {mandante_pt} | 🔴 {visitante_pt}\n\n"
-            f"Posse de Bola: {dados['posse_m']}% vs {dados['posse_v']}%\n"
-            f"[{barra_posse}]\n"
-            f"Chutes ao Gol: {dados['cg_m']} vs {dados['cg_v']}\n"
-            f"[{barra_chutes}]\n"
-            f"Escanteios: {dados['esc_m']} vs {dados['esc_v']}\n"
-            f"[{barra_escanteios}]\n\n"
-            f"📈 <b>PROJEÇÕES MATEMÁTICAS (90 MIN):</b>\n"
-            f"📐 Escanteios Projetados: <b>{projecoes['escanteios_final_projetado']}</b>\n"
-            f"🟨 Cartões Projetados: <b>{projecoes['cartoes_final_projetado']}</b>\n"
-            f"🏃‍♂️ Faltas Projetadas: <b>{projecoes['faltas_final_projetado']}</b>\n\n"
-            f"🤖 <b>PROCESSANDO ANÁLISE DE IA...</b>"
-        )
-
-        bot.edit_message_text(
-            layout,
-            chat_id=message.chat.id,
-            message_id=msg_carregando.message_id,
-            parse_mode="HTML"
-        )
-
-        prompt_ia = (
-            f"AJA COMO O ANALISTA QUANTITATIVO DO CANAL VAR DO LUCRO.\n\n"
-            f"O jogo atual está aos {dados['tempo']} minutos. Placar: {mandante_pt} {dados['gols_m']} x {dados['gols_v']} {visitante_pt}.\n"
-            f"Nossas projeções matemáticas:\n"
-            f"- Escanteios finais totais projetados: {projecoes['escanteios_final_projetado']}\n"
-            f"- Cartões finais totais projetados: {projecoes['cartoes_final_projetado']}\n"
-            f"Gere um palpite esportivo ao vivo de alto valor (+EV) fundamentado nestas estatísticas. "
-            "Defina o tamanho ideal da aposta usando o Critério de Kelly Fracionário (Kelly 1/4). "
-            "Inclua o link de afiliado exatamente dessa forma: <a href='https://superbet.com'>Aproveitar Oportunidade na Superbet</a>. "
-            "Nunca utilize asteriscos no texto e mantenha todos os termos traduzidos para o Português do Brasil."
-        )
-
-        analise_ia = analisador.perguntar_ao_gemini(prompt_ia)
-        layout_final = layout.replace("🤖 <b>PROCESSANDO ANÁLISE DE IA...</b>", f"🤖 <b>SINAL DE MERCADOS SECUNDÁRIOS:</b>\n\n{analise_ia}")
-        
-        bot.send_message(
-            CHAT_ID_GERAL,
-            layout_final,
-            message_thread_id=int(TOPICO_AO_VIVO) if TOPICO_AO_VIVO else None,
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
-
-        bot.delete_message(message.chat.id, msg_carregando.message_id)
-
-    except Exception as e:
-        print(f"[ERRO AO VIVO] {str(e)}")
-        bot.edit_message_text(
-            "❌ <b>Erro Interno</b>\nHouve uma falha ao obter estatísticas do jogo.",
-            chat_id=message.chat.id,
-            message_id=msg_carregando.message_id,
-            parse_mode="HTML"
-        )
-
-# ==========================================
-# PAINEL DO TIME (ADMINS ONLY)
-# ==========================================
-
-@bot.message_handler(commands=['painel'])
-def cmd_painel(message):
-    if not validar_canal_comando(message, TOPICO_ADMINS, "Mesa dos Admins"):
-        return
-
-    partes = message.text.split(maxsplit=1)
-    if len(partes) < 2:
-        bot.reply_to(message, "Use o formato: /painel NOME_DO_TIME", parse_mode="HTML")
-        return
-
-    time_busca = partes[1]
-    if not WEBHOOK_URL:
-        bot.reply_to(message, "Configuração de painel pendente (WEBHOOK_URL vazia).")
-        return
-
-    url_painel = f"{WEBHOOK_URL}/painel?time={time_busca}"
-    markup = InlineKeyboardMarkup()
-    btn = InlineKeyboardButton(text="Abrir Painel Estatístico", web_app=WebAppInfo(url=url_painel))
-    markup.add(btn)
-
-    bot.reply_to(
-        message,
-        f"📊 <b>Painel Interativo do {time_busca}</b>\n\nAbra o painel interativo abaixo para ver o desempenho do time no formato avançado.",
-        reply_markup=markup,
-        parse_mode="HTML"
-    )
-
-# ==========================================
-# RESUMO DO DIA (ROTEAMENTO PRE-JOGO)
-# ==========================================
-
-@bot.message_handler(commands=['resumo'])
-def cmd_resumo(message):
-    if not eh_admin(message):
-        bot.reply_to(message, "Apenas administradores podem acionar o resumo do dia.")
-        return
-
-    msg_auditoria = bot.reply_to(message, "<i>Coletando resultados e enviando auditoria para o canal Pré-Jogo...</i>", parse_mode="HTML")
-
-    try:
-        jogos = analisador.obter_jogos_do_dia()
-        if not jogos:
-            bot.edit_message_text("Nenhum jogo cadastrado hoje.", chat_id=message.chat.id, message_id=msg_auditoria.message_id, parse_mode="HTML")
-            return
-
-        relatorio_jogos = []
-        for j in jogos:
-            mandante_pt = analisador.traduzir_en_para_pt(j['mandante'])
-            visitante_pt = analisador.traduzir_en_para_pt(j['visitante'])
-            liga_pt = analisador.traduzir_en_para_pt(j['liga'])
-            
-            relatorio_jogos.append(
-                f"- {mandante_pt} {j['gols_mandante']} x {j['gols_visitante']} {visitante_pt} ({liga_pt})"
-            )
-        
-        relatorio_texto = "\n".join(relatorio_jogos)
-
-        prompt_ia = (
-            f"Abaixo estão os resultados das partidas de hoje:\n{relatorio_texto}\n\n"
-            "Atue como o Auditor Estatístico do VAR do Lucro. Faça um consolidado divertido "
-            "e direto determinando quais partidas terminaram em GREEN (🟢) para opções de Over ou Ambas Marcam, "
-            "e quais deram RED (🔴). Encerre de forma motivadora sem utilizar asteriscos."
-        )
-
-        resumo_gerado = analisador.perguntar_ao_gemini(prompt_ia)
-        
-        bot.send_message(
-            CHAT_ID_GERAL,
-            f"🏆 <b>VAR DO LUCRO - AUDITORIA DE RESULTADOS</b>\n\n{resumo_gerado}",
-            message_thread_id=int(TOPICO_PRE_JOGO) if TOPICO_PRE_JOGO else None,
-            parse_mode="HTML"
-        )
-
-        bot.delete_message(message.chat.id, msg_auditoria.message_id)
-
-    except Exception as e:
-        print(f"[ERRO RESUMO] {str(e)}")
-        bot.edit_message_text("Erro ao realizar a auditoria dos palpites.", chat_id=message.chat.id, message_id=msg_auditoria.message_id, parse_mode="HTML")")
-CHAT_ID_GERAL = os.getenv("TELEGRAM_CHAT_ID")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
-
-def obter_id_topico(message):
-    if message.reply_to_message and message.reply_to_message.forum_topic_created_metadata:
-        return str(message.message_thread_id)
-    if hasattr(message, 'message_thread_id'):
-        return str(message.message_thread_id)
-    return None
-
-def eh_admin(message):
-    topico_atual = obter_id_topico(message)
-    if topico_atual == TOPICO_ADMINS:
+def verificar_sala(message, id_sala_permitida: int) -> bool:
+    """Compara o ID do tópico de onde veio a mensagem com o ID da sala permitida."""
+    if message.chat.type == "private":
         return True
+    thread_id = message.message_thread_id
+    if thread_id is None:
+        thread_id = 0
+    return int(thread_id) == id_sala_permitida
+
+def traduzir_busca_para_ingles(termo: str) -> str:
+    """Traduz termos em português para inglês para compatibilidade com seleções."""
     try:
-        status = bot.get_chat_member(message.chat.id, message.from_user.id).status
-        return status in ["creator", "administrator"]
-    except Exception:
-        return False
+        traducao = GoogleTranslator(source='pt', target='en').translate(termo)
+        print(f"Busca original: '{termo}' | Traduzido para API: '{traducao}'")
+        return traducao
+    except Exception as e:
+        print(f"Erro na tradução pré-busca: {e}")
+        return termo
 
-def validar_canal_comando(message, topico_esperado, nome_sala):
-    topico_atual = obter_id_topico(message)
-    if topico_atual != topico_esperado:
-        bot.reply_to(
-            message, 
-            f"❌ <b>Acesso Negado</b>\nEste comando só pode ser executado no canal/tópico de {nome_sala}.", 
-            parse_mode="HTML"
-        )
-        return False
-    return True
-
-# ==========================================
-# INTERAÇÕES DO ADMIN E DE COMUNIDADE
-# ==========================================
-
-@bot.message_handler(commands=['bomdia'])
-def cmd_bomdia(message):
-    if not validar_canal_comando(message, TOPICO_RESENHA, "Resenha"):
-        return
-    prompt = "Crie uma mensagem divertida de bom dia para o grupo de apostadores e analistas, incentivando a lucrar hoje."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.reply_to(message, resposta, parse_mode="HTML")
-
-@bot.message_handler(commands=['bemvindo'])
-def cmd_bemvindo(message):
-    if not validar_canal_comando(message, TOPICO_RESENHA, "Resenha"):
-        return
-    prompt = "Gere uma saudação divertida e acolhedora para um novo membro que acabou de entrar no grupo VAR do Lucro."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.reply_to(message, resposta, parse_mode="HTML")
-
-@bot.message_handler(commands=['green'])
-def cmd_green(message):
-    if not validar_canal_comando(message, TOPICO_RESENHA, "Resenha"):
-        return
-    prompt = "Comemore um GREEN espetacular de forma enérgica e provocativa, mantendo a seriedade analítica do VAR do Lucro."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.reply_to(message, resposta, parse_mode="HTML")
-
-@bot.message_handler(commands=['red'])
-def cmd_red(message):
-    if not validar_canal_comando(message, TOPICO_RESENHA, "Resenha"):
-        return
-    prompt = "Gere uma mensagem analítica e resiliente sobre um RED que aconteceu, destacando que a gestão de banca e longo prazo nos salvará."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.reply_to(message, resposta, parse_mode="HTML")
-
-@bot.message_handler(commands=['resenha'])
-def cmd_resenha(message):
-    if not validar_canal_comando(message, TOPICO_RESENHA, "Resenha"):
-        return
-    prompt = "Inicie um debate divertido chamando a comunidade para debater as melhores entradas do mercado para as próximas horas."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.reply_to(message, resposta, parse_mode="HTML")
-
-@bot.message_handler(content_types=['new_chat_members'])
-def acolher_membro_automatico(message):
-    thread_id = int(TOPICO_RESENHA) if TOPICO_RESENHA else None
-    prompt = "Dê as boas-vindas calorosas a um novo membro no canal VAR do Lucro, sem utilizar asteriscos."
-    resposta = analisador.perguntar_ao_gemini(prompt)
-    bot.send_message(message.chat.id, resposta, message_thread_id=thread_id, parse_mode="HTML")
-
-# ==========================================
-# CRONOGRAMA DIÁRIO (ROTEAMENTO PRE-JOGO)
-# ==========================================
-
-@bot.message_handler(commands=['cronograma'])
-def cmd_cronograma(message):
-    if not eh_admin(message):
-        bot.reply_to(message, "Apenas administradores podem rodar este comando.")
-        return
-    
-    bot.reply_to(message, "<i>Gerando e enviando cronograma para o canal Pré-Jogo...</i>", parse_mode="HTML")
-    enviar_cronograma_diario()
-
-def enviar_cronograma_diario():
-    jogos = analisador.obter_jogos_do_dia(forcar=True)
-    topico_envio = int(TOPICO_PRE_JOGO) if TOPICO_PRE_JOGO else None
-
-    if not jogos:
-        texto = "⚽ <b>VAR DO LUCRO - CRONOGRAMA DIÁRIO</b>\n\nNenhuma partida monitorada para hoje."
-        bot.send_message(CHAT_ID_GERAL, texto, message_thread_id=topico_envio, parse_mode="HTML")
-        return
-
-    mensagem = ["⚽ <b>VAR DO LUCRO - CRONOGRAMA DIÁRIO</b>\n"]
-    
-    for j in jogos:
-        try:
-            dt_utc = datetime.fromisoformat(j["data_utc"].replace("Z", "+00:00"))
-            dt_br = dt_utc.astimezone(timezone(timedelta(hours=-3)))
-            data_formatada = dt_br.strftime("%d %b, %H:%M").upper()
-        except Exception:
-            data_formatada = "DATA INDEFINIDA"
-
-        # TRADUÇÃO ATIVA DOS NOMES DOS TIMES (FOTO 1 STYLE)
-        mandante_pt = analisador.traduzir_nome(j['mandante'])
-        visitante_pt = analisador.traduzir_nome(j['visitante'])
-        liga_pt = analisador.traduzir_nome(j['liga'])
-        estadio_pt = analisador.traduzir_nome(j['estadio'])
-
-        flag_m = analisador.obter_bandeira(j["mandante"])
-        flag_v = analisador.obter_bandeira(j["visitante"])
-
-        card = (
-            f"  {data_formatada}\n"
-            f"  {flag_m} {mandante_pt} - {flag_v} {visitante_pt}\n"
-            f"  ({estadio_pt})\n"
-            f"──────────────────────────"
-        )
-        mensagem.append(card)
-
-    texto_final = "\n\n".join(mensagem)
-    bot.send_message(CHAT_ID_GERAL, texto_final, message_thread_id=topico_envio, parse_mode="HTML")
-
-# ==========================================
-# SINAL AO VIVO (/aovivo)
-# ==========================================
-
-@bot.message_handler(commands=['aovivo'])
-def cmd_aovivo(message):
-    if not validar_canal_comando(message, TOPICO_AO_VIVO, "Sinais Ao Vivo"):
-        return
-
-    partes = message.text.split(maxsplit=1)
-    if len(partes) < 2:
-        bot.reply_to(message, "Use o formato: /aovivo NOME_DO_TIME", parse_mode="HTML")
-        return
-
-    termo = partes[1]
-    msg_carregando = bot.reply_to(message, "<i>Consultando dados em tempo real...</i>", parse_mode="HTML")
-
+def gerar_texto_interativo_ia(prompt: str) -> str:
+    """Gera textos criativos e inéditos em tempo real usando o Google Gemini 2.5 Flash."""
     try:
-        dados = analisador.consultar_dados_ao_vivo(termo)
-        if not dados:
-            bot.edit_message_text(
-                "❌ <b>Partida Não Encontrada</b>\nNão foi identificado nenhum jogo ao vivo ocorrendo agora para o time informado.",
-                chat_id=message.chat.id,
-                message_id=msg_carregando.message_id,
-                parse_mode="HTML"
+        client = obter_cliente_gemini()
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Erro ao gerar texto interativo com a IA: {e}")
+        return "Erro temporário de conexão com a cabine do VAR. Tente novamente em instantes."
+
+def registrar_comandos(bot: TeleBot):
+    """Registra todos os comandos e faz a triagem das salas de destino."""
+
+    @bot.message_handler(commands=['start', 'ajuda'])
+    def enviar_ajuda(message):
+        # Se for um Admin digitando na Mesa dos Admins, mostra a ajuda avançada de controle
+        if eh_admin(bot, message) and verificar_sala(message, ID_ADMINS):
+            ajuda_admin = (
+                "💎 PAINEL DE CONTROLE DO OPERADOR (ADMINS) 💎\n\n"
+                "Aqui esta o manual com todos os comandos criados e suas funcoes:\n\n"
+                "📌 COMANDOS PUBLICOS (Disponiveis para membros):\n"
+                "• /prejogo <time>: Manda o relatorio VAR do Lucro. (Somente na sala Pre-Jogo)\n"
+                "• /aovivo <time>: Manda o sinal de Over Gols. (Somente na sala de Sinais Ao Vivo)\n\n"
+                "📌 INTERACOES DO ADMIN (Qualquer uma das 4 salas):\n"
+                "• /bomdia: Envia mensagem animada sobre regras de ouro e gestao.\n"
+                "• /bemvindo: Envia recepcao do VAR (disparado auto para novos membros na Resenha).\n"
+                "• /green: Alerta festivo para comemorar acertos.\n"
+                "• /red: Alerta tecnico focado em gestao e psicologia pos-red.\n"
+                "• /resenha: Sorteia uma curiosidade bizarra de futebol.\n\n"
+                "📌 COMANDOS CRITICOS E APIS (Apenas na sala Mesa dos Admins):\n"
+                "• /update: Faz auto-diagnostico das conexoes do Gemini e API de Futebol.\n"
+                "• /ids <busca>: Pesquisa e retorna os IDs corretos de ligas na API.\n"
+                "• /addliga <ID>: Adiciona um campeonato ao monitoramento ativo.\n"
+                "• /remliga <ID>: Remove um campeonato do monitoramento.\n"
+                "• /verligas: Mostra os IDs das ligas monitoradas no momento.\n"
+                "• /scan: Força a varredura de jogos para a proxima hora imediatamente.\n"
+                "• /cronograma: Forca a geracao e envio da tabela de jogos de hoje para a sala Pre-Jogo.\n"
+                "• /painel <time>: Abre o painel visual com graficos e elenco do time.\n"
+                "• /resumo: Coleta placares e estatísticas de hoje e gera um balanço de fechamento com Greens."
+            )
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=ajuda_admin,
+                message_thread_id=message.message_thread_id
             )
             return
 
-        # TRADUÇÃO ATIVA DOS NOMES DA PARTIDA AO VIVO (PT-BR)
-        mandante_pt = analisador.traduzir_nome(dados['mandante'])
-        visitante_pt = analisador.traduzir_nome(dados['visitante'])
-        liga_pt = analisador.traduzir_nome(dados['liga'])
-
-        arbitro_partida = {
-            "media_cartoes": 5.2,
-            "media_faltas": 26.0,
-            "rigor_cartao_por_falta": 0.20
-        }
-        
-        projecoes = analisador.calcular_projecoes_secundarias(dados, arbitro_partida)
-
-        barra_posse = analisador.gerar_barra_proporcional(dados["posse_m"], dados["posse_v"])
-        barra_chutes = analisador.gerar_barra_proporcional(dados["cg_m"], dados["cg_v"])
-        barra_escanteios = analisador.gerar_barra_proporcional(dados["esc_m"], dados["esc_v"])
-
-        layout = (
-            f"🏟️ <b>{liga_pt}</b>\n"
-            f"⚽ <b>{mandante_pt} {dados['gols_m']}</b> x <b>{dados['gols_v']} {visitante_pt}</b>\n"
-            f"⏱️ Tempo: {dados['tempo']}' ({dados['status']})\n\n"
-            f"📊 <b>ESTATÍSTICAS EM TEMPO REAL (FOTO 2 STYLE):</b>\n"
-            f"🔵 {mandante_pt} | 🔴 {visitante_pt}\n\n"
-            f"Posse de Bola: {dados['posse_m']}% vs {dados['posse_v']}%\n"
-            f"[{barra_posse}]\n"
-            f"Chutes ao Gol: {dados['cg_m']} vs {dados['cg_v']}\n"
-            f"[{barra_chutes}]\n"
-            f"Escanteios: {dados['esc_m']} vs {dados['esc_v']}\n"
-            f"[{barra_escanteios}]\n\n"
-            f"📈 <b>PROJEÇÕES MATEMÁTICAS (90 MIN):</b>\n"
-            f"📐 Escanteios Projetados: <b>{projecoes['escanteios_final_projetado']}</b>\n"
-            f"🟨 Cartões Projetados: <b>{projecoes['cartoes_final_projetado']}</b>\n"
-            f"🏃‍♂️ Faltas Projetadas: <b>{projecoes['faltas_final_projetado']}</b>\n\n"
-            f"🤖 <b>PROCESSANDO ANÁLISE DE IA...</b>"
+        # Ajuda padrão para membros nas outras salas
+        texto_membro = (
+            "💎 Central de Inteligência Esportiva 💎\n\n"
+            "Cada comando possui sua sala específica:\n"
+            "• Use o comando /prejogo somente na sala Pré-Jogo.\n"
+            "• Use o comando /aovivo somente na sala de Sinais Ao Vivo."
         )
+        bot.reply_to(message, texto_membro)
 
-        bot.edit_message_text(
-            layout,
-            chat_id=message.chat.id,
-            message_id=msg_carregando.message_id,
-            parse_mode="HTML"
-        )
-
-        prompt_ia = (
-            f"AJA COMO O ANALISTA QUANTITATIVO DO CANAL VAR DO LUCRO.\n\n"
-            f"O jogo atual está aos {dados['tempo']} minutos. Placar: {mandante_pt} {dados['gols_m']} x {dados['gols_v']} {visitante_pt}.\n"
-            f"Nossas projeções matemáticas:\n"
-            f"- Escanteios finais totais projetados: {projecoes['escanteios_final_projetado']}\n"
-            f"- Cartões finais totais projetados: {projecoes['cartoes_final_projetado']}\n"
-            f"Gere um palpite esportivo ao vivo de alto valor (+EV) fundamentado nestas estatísticas. "
-            "Defina o tamanho ideal da aposta usando o Critério de Kelly Fracionário (Kelly 1/4). "
-            "Inclua o link de afiliado exatamente dessa forma: <a href='https://superbet.com'>Aproveitar Oportunidade na Superbet</a>. "
-            "Nunca utilize asteriscos no texto e mantenha todos os termos traduzidos para o Português do Brasil."
-        )
-
-        analise_ia = analisador.perguntar_ao_gemini(prompt_ia)
-        layout_final = layout.replace("🤖 <b>PROCESSANDO ANÁLISE DE IA...</b>", f"🤖 <b>SINAL DE MERCADOS SECUNDÁRIOS:</b>\n\n{analise_ia}")
-        
-        bot.send_message(
-            CHAT_ID_GERAL,
-            layout_final,
-            message_thread_id=int(TOPICO_AO_VIVO) if TOPICO_AO_VIVO else None,
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
-
-        bot.delete_message(message.chat.id, msg_carregando.message_id)
-
-    except Exception as e:
-        print(f"[ERRO AO VIVO] {str(e)}")
-        bot.edit_message_text(
-            "❌ <b>Erro Interno</b>\nHouve uma falha ao obter estatísticas do jogo.",
-            chat_id=message.chat.id,
-            message_id=msg_carregando.message_id,
-            parse_mode="HTML"
-        )
-
-# ==========================================
-# PAINEL DO TIME (ADMINS ONLY)
-# ==========================================
-
-@bot.message_handler(commands=['painel'])
-def cmd_painel(message):
-    if not validar_canal_comando(message, TOPICO_ADMINS, "Mesa dos Admins"):
-        return
-
-    partes = message.text.split(maxsplit=1)
-    if len(partes) < 2:
-        bot.reply_to(message, "Use o formato: /painel NOME_DO_TIME", parse_mode="HTML")
-        return
-
-    time_busca = partes[1]
-    if not WEBHOOK_URL:
-        bot.reply_to(message, "Configuração de painel pendente (WEBHOOK_URL vazia).")
-        return
-
-    url_painel = f"{WEBHOOK_URL}/painel?time={time_busca}"
-    markup = InlineKeyboardMarkup()
-    btn = InlineKeyboardButton(text="Abrir Painel Estatístico", web_app=WebAppInfo(url=url_painel))
-    markup.add(btn)
-
-    bot.reply_to(
-        message,
-        f"📊 <b>Painel Interativo do {time_busca}</b>\n\nAbra o painel interativo abaixo para ver o desempenho do time no formato avançado.",
-        reply_markup=markup,
-        parse_mode="HTML"
-    )
-
-# ==========================================
-# RESUMO DO DIA (ROTEAMENTO PRE-JOGO)
-# ==========================================
-
-@bot.message_handler(commands=['resumo'])
-def cmd_resumo(message):
-    if not eh_admin(message):
-        bot.reply_to(message, "Apenas administradores podem acionar o resumo do dia.")
-        return
-
-    msg_auditoria = bot.reply_to(message, "<i>Coletando resultados e enviando auditoria para o canal Pré-Jogo...</i>", parse_mode="HTML")
-
-    try:
-        jogos = analisador.obter_jogos_do_dia()
-        if not jogos:
-            bot.edit_message_text("Nenhum jogo cadastrado hoje.", chat_id=message.chat.id, message_id=msg_auditoria.message_id, parse_mode="HTML")
+    # =====================================================================
+    # COMANDO: PRÉ-JOGO (APENAS NA SALA PRÉ-JOGO)
+    # =====================================================================
+    @bot.message_handler(commands=['prejogo'])
+    def comando_pre_jogo(message):
+        if not verificar_sala(message, ID_PRE_JOGO):
+            bot.reply_to(message, "⚠️ Este comando so pode ser utilizado na sala Pré-Jogo.")
             return
 
-        relatorio_jogos = []
-        for j in jogos:
-            mandante_pt = analisador.traduzir_nome(j['mandante'])
-            visitante_pt = analisador.traduzir_nome(j['visitante'])
-            liga_pt = analisador.traduzir_nome(j['liga'])
+        args = message.text.replace('/prejogo', '').strip()
+        if not args:
+            bot.reply_to(message, "⚠️ Digite o nome do time. Exemplo: /prejogo Flamengo")
+            return
             
-            relatorio_jogos.append(
-                f"- {mandante_pt} {j['gols_mandante']} x {j['gols_visitante']} {visitante_pt} ({liga_pt})"
+        bot.reply_to(message, f"🔍 Traduzindo e buscando cronograma de hoje para '{args}'...")
+        args_ingles = traduzir_busca_para_ingles(args)
+        
+        jogos_hoje = obter_jogos_do_dia()
+        jogo_encontrado = None
+        args_min = args_ingles.lower().strip()
+        
+        for jogo in jogos_hoje:
+            casa = jogo["teams"]["home"]["name"].lower()
+            fora = jogo["teams"]["away"]["name"].lower()
+            
+            # Cruzamento duplo de segurança (Português ou Inglês)
+            if args.lower().strip() in casa or args.lower().strip() in fora or args_min in casa or args_min in fora:
+                jogo_encontrado = jogo
+                break
+                
+        if not jogo_encontrado:
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=f"❌ Não encontrei nenhuma partida para hoje com o nome '{args}'.",
+                message_thread_id=message.message_thread_id
             )
-        
-        relatorio_texto = "\n".join(relatorio_jogos)
-
-        prompt_ia = (
-            f"Abaixo estão os resultados das partidas de hoje:\n{relatorio_texto}\n\n"
-            "Atue como o Auditor Estatístico do VAR do Lucro. Faça um consolidado divertido "
-            "e direto determinando quais partidas terminaram em GREEN (🟢) para opções de Over ou Ambas Marcam, "
-            "e quais deram RED (🔴). Encerre de forma motivadora sem utilizar asteriscos."
-        )
-
-        resumo_gerado = analisador.perguntar_ao_gemini(prompt_ia)
-        
+            return
+            
         bot.send_message(
-            CHAT_ID_GERAL,
-            f"🏆 <b>VAR DO LUCRO - AUDITORIA DE RESULTADOS</b>\n\n{resumo_gerado}",
-            message_thread_id=int(TOPICO_PRE_JOGO) if TOPICO_PRE_JOGO else None,
-            parse_mode="HTML"
+            chat_id=message.chat.id, 
+            text="🧠 Gerando Relatório de Inteligência VAR do Lucro...",
+            message_thread_id=message.message_thread_id
+        )
+        relatorio = gerar_relatorio_pre_jogo(jogo_encontrado)
+        bot.send_message(chat_id=message.chat.id, text=relatorio, message_thread_id=message.message_thread_id)
+
+    # =====================================================================
+    # COMANDO: AO VIVO (APENAS NA SALA SINAIS AO VIVO)
+    # =====================================================================
+    @bot.message_handler(commands=['aovivo'])
+    def comando_ao_vivo(message):
+        if not verificar_sala(message, ID_AO_VIVO):
+            bot.reply_to(message, "⚠️ Este comando so pode ser utilizado na sala de Sinais Ao Vivo.")
+            return
+
+        args = message.text.replace('/aovivo', '').strip()
+        if not args:
+            bot.reply_to(message, "⚠️ Digite o nome do time. Exemplo: /aovivo Real Madrid")
+            return
+        
+        bot.reply_to(message, f"🔍 Procurando partida ao vivo para '{args}'...")
+        
+        args_original = args.strip()
+        args_ingles = traduzir_busca_para_ingles(args)
+        
+        # Passa o nome original e o traduzido para a busca ao vivo inteligente
+        dados_jogo = buscar_jogo_ao_vivo_por_time(args_original, args_ingles)
+        
+        if not dados_jogo:
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=f"❌ Nenhuma partida ao vivo encontrada para '{args}' no momento.",
+                message_thread_id=message.message_thread_id
+            )
+            return
+            
+        bot.send_message(
+            chat_id=message.chat.id, 
+            text="📊 Partida encontrada! Calculando probabilidades...",
+            message_thread_id=message.message_thread_id
+        )
+        analise_final = analisar_ao_vivo_e_formatar(dados_jogo)
+        bot.send_message(
+            chat_id=message.chat.id, 
+            text=analise_final,
+            message_thread_id=message.message_thread_id,
+            parse_mode="Markdown"
         )
 
-        bot.delete_message(message.chat.id, msg_auditoria.message_id)
+    # =====================================================================
+    # COMANDOS DE ADMINS - GRUPO 1: APENAS NA "MESA DOS ADMINS"
+    # =====================================================================
+    @bot.message_handler(commands=['update', 'addliga', 'remliga', 'verligas', 'ids', 'scan', 'cronograma', 'painel', 'resumo'])
+    def comandos_criticos_admin(message):
+        if not eh_admin(bot, message):
+            bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
+            return
 
-    except Exception as e:
-        print(f"[ERRO RESUMO] {str(e)}")
-        bot.edit_message_text("Erro ao realizar a auditoria dos palpites.", chat_id=message.chat.id, message_id=msg_auditoria.message_id, parse_mode="HTML")
+        if not verificar_sala(message, ID_ADMINS):
+            bot.reply_to(message, "⚠️ Este comando de configuração só é aceito dentro da sala Mesa dos Admins.")
+            return
+
+        comando = message.text.split()[0].replace('/', '').strip().lower()
+
+        if comando == 'update':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="Iniciando auto-diagnostico dos sistemas...",
+                message_thread_id=message.message_thread_id
+            )
+            status_gemini = "OK"
+            status_api_football = "OK"
+            
+            chave_gemini = os.getenv("GEMINI_API_KEY")
+            chave_football = os.getenv("API_FOOTBALL_KEY")
+            
+            try:
+                client = obter_cliente_gemini()
+                client.models.generate_content(model='gemini-2.5-flash', contents="ping")
+            except Exception as e:
+                status_gemini = f"FALHA ({e})"
+                
+            try:
+                primeira_chave = [k.strip() for k in chave_football.split(",") if k.strip()][0]
+                headers = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': primeira_chave}
+                res = requests.get("https://v3.football.api-sports.io/status", headers=headers, timeout=5)
+                dados_status = res.json()
+                
+                if "response" not in dados_status or dados_status.get("errors"):
+                    erro_recebido = dados_status.get("errors") if dados_status.get("errors") else dados_status
+                    status_api_football = f"FALHA (Erro: {erro_recebido})"
+                else:
+                    status_api_football = "OK"
+            except Exception as e:
+                status_api_football = f"FALHA ({e})"
+                
+            relatorio_update = (
+                "DIAGNOSTICO DE SISTEMA COMPLETO\n\n"
+                f"Variavel GEMINI KEY: {'Configurada' if chave_gemini else 'AUSENTE'}\n"
+                f"Variavel FOOTBALL KEY: {'Configurada' if chave_football else 'AUSENTE'}\n\n"
+                f"Conexao Google Gemini IA: {status_gemini}\n"
+                f"Conexao API-Football: {status_api_football}"
+            )
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=relatorio_update,
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'scan':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="🔄 Iniciando varredura manual de partidas para a próxima hora...",
+                message_thread_id=message.message_thread_id
+            )
+            
+            from analisador import verificar_e_enviar_pre_jogos
+            qtd_enviados = verificar_e_enviar_pre_jogos(bot)
+            
+            if qtd_enviados > 0:
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text=f"✅ Varredura concluída! {qtd_enviados} novo(s) relatório(s) enviado(s) para a sala Pré-Jogo.",
+                    message_thread_id=message.message_thread_id
+                )
+            else:
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="ℹ️ Varredura concluída. Nenhuma nova partida agendada para a próxima hora nas ligas monitoradas.",
+                    message_thread_id=message.message_thread_id
+                )
+
+        elif comando == 'cronograma':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="🔄 Buscando partidas de hoje e gerando tabela diária via IA...",
+                message_thread_id=message.message_thread_id
+            )
+            
+            headers = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': os.getenv("API_FOOTBALL_KEY")}
+            from datetime import datetime, timezone, timedelta
+            agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
+            hoje_brt = agora_brt.strftime('%Y-%m-%d')
+            
+            try:
+                res_cru = requests.get(f"https://v3.football.api-sports.io/fixtures?date={hoje_brt}", headers=headers, timeout=12)
+                dados_crus = res_cru.json()
+                total_mundo = len(dados_crus.get("response", []))
+                erros_api = dados_crus.get("errors")
+            except Exception as e:
+                total_mundo, erros_api = 0, str(e)
+            
+            from analisador import obter_jogos_do_dia, gerar_cronograma_diario_ia, listar_ligas_monitoradas
+            jogos = obter_jogos_do_dia()
+            
+            if jogos:
+                texto_cronograma = gerar_cronograma_diario_ia(jogos)
+                bot.send_message(
+                    chat_id=int(os.getenv("TELEGRAM_CHAT_ID")),
+                    text=texto_cronograma,
+                    message_thread_id=ID_PRE_JOGO
+                )
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="✅ Cronograma diário gerado e enviado com sucesso para a sala Pré-Jogo!",
+                    message_thread_id=message.message_thread_id
+                )
+            else:
+                msg_diagnostico = (
+                    "ℹ️ Nenhuma partida encontrada hoje nas suas ligas monitoradas.\n\n"
+                    "🔍 PAINEL DE DIAGNÓSTICO DA API:\n"
+                    f"• Data consultada: {hoje_brt}\n"
+                    f"• Total de jogos no mundo hoje na API: {total_mundo}\n"
+                    f"• Erros retornados pela API: {erros_api if erros_api else 'Nenhum'}\n"
+                    f"• Ligas monitoradas ativas na memória: {listar_ligas_monitoradas()}"
+                )
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text=msg_diagnostico,
+                    message_thread_id=message.message_thread_id
+                )
+
+        elif comando == 'resumo':
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="🔄 Coletando estatísticas detalhadas de escanteios, cartões e faltas dos jogos de hoje...",
+                message_thread_id=message.message_thread_id
+            )
+            
+            from analisador import obter_dados_recap_dia, gerar_resumo_diario_ia
+            dados_recap = obter_dados_recap_dia()
+            
+            if dados_recap:
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="🧠 Analisando resultados e auditando Greens/Reds com a IA do VAR do Lucro...",
+                    message_thread_id=message.message_thread_id
+                )
+                
+                texto_resumo = gerar_resumo_diario_ia(dados_recap)
+                
+                bot.send_message(
+                    chat_id=int(os.getenv("TELEGRAM_CHAT_ID")),
+                    text=texto_resumo,
+                    message_thread_id=ID_PRE_JOGO
+                )
+                
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="✅ Balanço diário consolidado e auditado postado com sucesso na sala Pré-Jogo!",
+                    message_thread_id=message.message_thread_id
+                )
+            else:
+                bot.send_message(
+                    chat_id=message.chat.id, 
+                    text="ℹ️ Nenhuma partida registrada hoje nas ligas monitoradas para gerar o fechamento.",
+                    message_thread_id=message.message_thread_id
+                )
+
+        elif comando == 'painel':
+            nome_time = message.text.replace('/painel', '').strip()
+            if not nome_time:
+                bot.reply_to(message, "⚠️ Use o comando digitando o nome do time. Exemplo: /painel Flamengo")
+                return
+                
+            bot.reply_to(message, f"🔍 Pesquisando dados e montando o painel de analise para '{nome_time}'...")
+            
+            from analisador import buscar_time_por_nome, traduzir_busca_para_ingles
+            nome_time_en = traduzir_busca_para_ingles(nome_time)
+            
+            try:
+                time_dados = buscar_time_por_nome(nome_time_en)
+                
+                if not time_dados:
+                    bot.send_message(
+                        chat_id=message.chat.id, 
+                        text=f"❌ Nao encontrei nenhum time com o nome '{nome_time}'.",
+                        message_thread_id=message.message_thread_id
+                    )
+                    return
+                    
+                time_id = time_dados["team"]["id"]
+                time_nome = time_dados["team"]["name"]
+                
+                url_web_app = f"{os.getenv('WEBHOOK_URL')}/painel_time?team_id={time_id}&league_id=71&season=2024"
+                
+                teclado = telebot.types.InlineKeyboardMarkup()
+                botao_panel = telebot.types.InlineKeyboardButton(
+                    text=f"📊 Ver Estatísticas do {time_nome}",
+                    web_app=telebot.types.WebAppInfo(url=url_web_app)
+                )
+                teclado.add(botao_panel)
+                
+                bot.send_message(
+                    chat_id=message.chat.id,
+                    text=f"💎 Painel estatístico pronto para o {time_nome}!",
+                    reply_markup=teclado,
+                    message_thread_id=message.message_thread_id
+                )
+            except Exception as e:
+                bot.reply_to(message, f"Erro ao construir painel: {e}")
+
+        elif comando == 'addliga':
+            try:
+                id_liga = int(message.text.split()[1])
+                from analisador import adicionar_liga_monitorada
+                if adicionar_liga_monitorada(id_liga):
+                    bot.reply_to(message, f"Sucesso! A liga ID {id_liga} foi adicionada ao monitoramento.")
+                else:
+                    bot.reply_to(message, f"A liga ID {id_liga} ja estava no monitoramento.")
+            except Exception:
+                bot.reply_to(message, "⚠️ Use: /addliga <numero_id>")
+
+        elif comando == 'remliga':
+            try:
+                id_liga = int(message.text.split()[1])
+                from analisador import remover_liga_monitorada
+                if remover_liga_monitorada(id_liga):
+                    bot.reply_to(message, f"Sucesso! A liga ID {id_liga} foi removida.")
+                else:
+                    bot.reply_to(message, f"A liga ID {id_liga} nao foi encontrada.")
+            except Exception:
+                bot.reply_to(message, "⚠️ Use: /remliga <numero_id>")
+
+        elif comando == 'verligas':
+            from analisador import listar_ligas_monitoradas
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=f"LIGAS ATIVAS NO MONITORAMENTO DO VAR:\n\nIDs Monitorados: {listar_ligas_monitoradas()}",
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'ids':
+            try:
+                arg_busca = message.text.replace('/ids', '').strip()
+                if not arg_busca:
+                    bot.reply_to(message, "Para buscar IDs de ligas use: /ids <nome_ou_pais>\nTabela completa: https://dashboard.api-sports.io/football/ids", disable_web_page_preview=True)
+                else:
+                    arg_busca_ingles = traduzir_busca_para_ingles(arg_busca)
+                    from analisador import buscar_ids_ligas
+                    res = buscar_ids_ligas(arg_busca_ingles)
+                    if not res:
+                        bot.send_message(
+                            chat_id=message.chat.id, 
+                            text="Nenhuma liga encontrada.",
+                            message_thread_id=message.message_thread_id
+                        )
+                    else:
+                        linhas = [f"• ID: {r['id']} | {r['nome']} ({r['pais']})" for r in res[:15]]
+                        bot.send_message(
+                            chat_id=message.chat.id, 
+                            text="RESULTADO DA BUSCA DE LIGAS:\n\n" + "\n".join(linhas),
+                            message_thread_id=message.message_thread_id
+                        )
+            except Exception as e:
+                bot.reply_to(message, f"Erro ao buscar IDs: {e}")
+
+    # =====================================================================
+    # COMANDOS DE ADMINS - GRUPO 2: PERMITIDOS EM QUALQUER UMA DAS 4 SALAS
+    # =====================================================================
+    @bot.message_handler(commands=['bemvindo', 'bomdia', 'green', 'red', 'resenha'])
+    def comandos_interacao_admin(message):
+        if not eh_admin(bot, message):
+            bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
+            return
+
+        thread_id = message.message_thread_id
+        if thread_id is not None:
+            thread_id = int(thread_id)
+            if thread_id not in [ID_PRE_JOGO, ID_AO_VIVO, ID_RESENHA, ID_ADMINS]:
+                bot.reply_to(message, "⚠️ Comandos administrativos nao sao permitidos nesta sala do forum.")
+                return
+
+        comando = message.text.split()[0].replace('/', '').strip().lower()
+
+        if comando == 'bemvindo':
+            prompt = (
+                "Escreva uma mensagem de boas-vindas extremamente divertida, criativa e animada para um novo membro "
+                "que acabou de entrar no nosso grupo do Telegram.\n"
+                "TEMA DO GRUPO: 'VAR do Lucro' (grupo focado em análises técnicas de futebol e investimentos esportivos).\n"
+                "A narrativa deve ser inspirada na cabine do VAR revisando os batimentos cardíacos, o perfil e a carteira do novato e 'confirmando no monitor' a aprovação para o lucro.\n"
+                "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português fluído do Brasil."
+            )
+            texto = gerar_texto_interativo_ia(prompt)
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=texto,
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'bomdia':
+            prompt = (
+                "Escreva um bom dia extremamente enérgico, motivador e focado no sucesso para a nossa comunidade "
+                "de investidores esportivos da 'VAR do Lucro'.\n"
+                "Incentive-os a analisar bem, respeitar a gestão de stake (banca) e manter o controle emocional hoje.\n"
+                "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português."
+            )
+            texto = gerar_texto_interativo_ia(prompt)
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=texto,
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'green':
+            prompt = (
+                "Escreva uma comemoração de GREEN (aposta ganha) extremamente explosiva, vitoriosa e barulhenta para a nossa comunidade 'VAR do Lucro'.\n"
+                "Celebre a precisão técnica do nosso método VAR e comemore o lucro colocado no bolso hoje.\n"
+                "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português."
+            )
+            texto = gerar_texto_interativo_ia(prompt)
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=texto,
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'red':
+            prompt = (
+                "Escreva uma mensagem de consolo técnica e psicológica pós-RED (aposta perdida) para a comunidade 'VAR do Lucro'.\n"
+                "O tom deve ser profissional, calmo e altamente focado na importância de seguir a gestão de banca rigorosa (usar stake de 1% a 3%) "
+                "e por que a matemática a longo prazo sempre vence as variações do futebol.\n"
+                "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português."
+            )
+            texto = gerar_texto_interativo_ia(prompt)
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=texto,
+                message_thread_id=message.message_thread_id
+            )
+
+        elif comando == 'resenha':
+            prompt = (
+                "Escreva uma curiosidade real, extremamente bizarra, boba ou engraçada sobre a história do futebol mundial.\n"
+                "O texto deve ser curto, divertido e perfeito para prender a atenção do nosso grupo 'VAR do Lucro'.\n"
+                "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português."
+            )
+            texto = gerar_texto_interativo_ia(prompt)
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=texto,
+                message_thread_id=message.message_thread_id
+            )
+
+    # =====================================================================
+    # MONITORAMENTO AUTOMÁTICO DE NOVOS MEMBROS (ENVIO NA SALA RESENHA)
+    # =====================================================================
+    @bot.message_handler(content_types=['new_chat_members'])
+    def boas_vindas_automatico(message):
+        if not ID_RESENHA:
+            return
+
+        prompt = (
+            "Escreva uma mensagem de boas-vindas extremamente divertida, criativa e animada para um novo membro "
+            "que acabou de entrar no nosso grupo do Telegram.\n"
+            "TEMA DO GRUPO: 'VAR do Lucro' (grupo focado em análises técnicas de futebol e investimentos esportivos).\n"
+            "A narrativa deve ser inspirada na cabine do VAR revisando os batimentos cardíacos, o perfil e a carteira do novato e 'confirmando no monitor' a aprovação para o lucro.\n"
+            "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português fluído do Brasil."
+        )
+        texto = gerar_texto_interativo_ia(prompt)
+
+        try:
+            bot.send_message(
+                chat_id=message.chat.id,
+                text=texto,
+                message_thread_id=ID_RESENHA
+            )
+        except Exception as e:
+            print(f"Erro ao processar as boas-vindas automatizadas: {e}")
