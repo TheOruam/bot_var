@@ -38,6 +38,7 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
             resposta = requests.get(url, headers=headers, timeout=12)
             dados = resposta.json()
             
+            # REGRA BLINDADA: Se não houver a chave "response" OU se houver "errors" ativo, a chave FALHOU
             is_erro = "response" not in dados or dados.get("errors")
             
             if is_erro:
@@ -75,10 +76,6 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     return jogos_filtrados
 
 def obter_dados_recap_dia() -> List[Dict[str, Any]]:
-    """
-    Busca as partidas de hoje e extrai as estatísticas detalhadas de escanteios, 
-    cartões e faltas dos jogos que já finalizaram.
-    """
     jogos = obter_jogos_do_dia()
     resumos_com_stats = []
     
@@ -86,7 +83,6 @@ def obter_dados_recap_dia() -> List[Dict[str, Any]]:
         status = jogo["fixture"]["status"]["short"]
         fixture_id = jogo["fixture"]["id"]
         
-        # Só buscamos dados avançados de partidas finalizadas
         if status in ["FT", "AET", "PEN"]:
             gols_casa = jogo["goals"]["home"]
             gols_fora = jogo["goals"]["away"]
@@ -151,10 +147,6 @@ def obter_dados_recap_dia() -> List[Dict[str, Any]]:
     return resumos_com_stats
 
 def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
-    """
-    Envia a lista de partidas enriquecidas com estatísticas para o Gemini,
-    gerando um resumo diário profissional e auditando se as previsões bateram.
-    """
     try:
         client = obter_cliente_gemini()
         
@@ -190,24 +182,46 @@ def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
         return "Erro ao processar o fechamento de mercado detalhado."
 
 def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
+    """
+    Envia a lista bruta de partidas do dia para o Gemini formatar um cronograma
+    altamente estilizado que imita cartões de jogos divididos por linhas.
+    """
     try:
         client = obter_cliente_gemini()
+        
         lista_resumida = []
         for jogo in jogos:
+            # Captura o estádio de forma segura se existir
+            venue = jogo["fixture"]["venue"]["name"] if jogo["fixture"]["venue"]["name"] else ""
+            city = jogo["fixture"]["venue"]["city"] if jogo["fixture"]["venue"]["city"] else ""
+            estadio_completo = f"Estádio de {venue}" if venue else ""
+            if city and estadio_completo:
+                estadio_completo += f" - {city}"
+
             lista_resumida.append({
                 "campeonato": jogo["league"]["name"],
                 "casa": jogo["teams"]["home"]["name"],
                 "fora": jogo["teams"]["away"]["name"],
-                "hora_utc": jogo["fixture"]["date"]
+                "hora_utc": jogo["fixture"]["date"],
+                "estadio": estadio_completo
             })
+
         prompt = (
-            "Você é o 'VAR do Lucro'. Organize os jogos listados abaixo em um cronograma diário limpo.\n\n"
+            "Você é o 'VAR do Lucro'. Organize a lista de partidas de futebol abaixo em um cronograma diário super elegante.\n\n"
+            "INSTRUÇÃO DE ESTILO E CARTÕES (MUITO IMPORTANTE):\n"
+            "Você deve imitar o visual de cartões individuais para cada partida usando linhas divisórias horizontais exatas.\n"
+            "Cada partida deve ser escrita exatamente neste formato estruturado de 4 linhas, sem tabelas horizontais ou desalinhamentos:\n\n"
+            "──────────────────────\n"
+            "🗓️ [DIA] [MÊS EM MAIÚSCULO (ex: JUN)], [HORA CONVERTIDA PARA O HORÁRIO DE BRASÍLIA UTC-3]\n"
+            "⚽ [Nome do Time Casa Traduzido] - [Nome do Time Fora Traduzido]\n"
+            "🏟️ [Estádio e Cidade Traduzidos (se fornecido, ex: Estádio de Boston / Filadélfia. Se não houver, ignore esta linha)]\n"
+            "──────────────────────\n\n"
+            
             "REGRAS DE CONVERSÃO E TRADUÇÃO:\n"
-            "1. Agrupe as partidas estritamente por Campeonato/Liga.\n"
-            "2. Converta o horário 'hora_utc' para o Horário de Brasília (UTC-3). Mostre apenas as horas (ex: 11:00, 16:00, 20:30).\n"
-            "3. Traduza os nomes de times, países e ligas para o Português do Brasil.\n"
-            "4. NÃO use asteriscos (*) em hipótese alguma na resposta final. Monte uma tabela textual bonita usando espaçamentos e barras.\n"
-            "5. Adicione emojis esportivos ou bandeiras.\n\n"
+            "1. Agrupe as partidas por Campeonato/Liga escrevendo o título do campeonato acima do bloco de jogos.\n"
+            "2. Traduza os nomes de times, países e ligas para o Português do Brasil (ex: 'Brazil' vira 'Brasil', 'Scotland' vira 'Escócia').\n"
+            "3. NÃO use asteriscos (*) em hipótese alguma na resposta final.\n"
+            "4. Adicione emojis esportivos ou as bandeirinhas dos países (ex: 🇧🇷, 🏴󠁧󠁢󠁳󠁣󠁴󠁿) se forem seleções.\n\n"
             f"Lista de jogos do dia:\n{lista_resumida}"
         )
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
