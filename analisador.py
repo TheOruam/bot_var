@@ -9,13 +9,33 @@ from google.genai import types
 from google.genai.errors import APIError
 from typing import Optional, Dict, Any, List
 
+# Configurações globais
 API_FOOTBALL_URL = "https://v3.football.api-sports.io"
 
+# SISTEMA DE CACHE DIÁRIO E CONTROLE DE DISPAROS DE ALERTAS
+LIGAS_MONITORADAS = [71, 72, 73, 1, 39, 140, 2]
+JOGOS_DO_DIA_CACHE = []
+ULTIMA_CARGA_JOGOS = ""
+JOGOS_ANALISADOS = set()
+ALERTAS_ENVIADOS = set()  # Guarda chaves de controle ex: "fixtureID_3h", "fixtureID_10m"
+ULTIMO_DIA_CRONOGRAMA = ""
+
 def obter_cliente_gemini() -> genai.Client:
+    """Inicializa de forma segura o cliente da API do Google GenAI."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("Chave de ambiente 'GEMINI_API_KEY' não configurada.")
     return genai.Client(api_key=api_key)
+
+def gerar_texto_ia_local(prompt: str) -> str:
+    """Gera pequenos alertas de texto usando o Gemini 2.5 Flash."""
+    try:
+        client = obter_cliente_gemini()
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        return response.text.strip()
+    except Exception as e:
+        print(f"Erro ao gerar alerta por IA local: {e}")
+        return "Foco na cabine do VAR! Mais uma partida emocionante se aproxima."
 
 # =====================================================================
 # SISTEMA DE REDUNDÂNCIA DE APIS (FALLBACK MULTI-CHAVE BLINDADO)
@@ -40,7 +60,6 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
             dados = resposta.json()
             
             is_erro = "response" not in dados or dados.get("errors")
-            
             if is_erro:
                 erro_detalhado = dados.get("errors") if dados.get("errors") else dados
                 print(f"⚠️ [Fallback API] Chave {i+1} falhou. Motivo: {erro_detalhado}. Tentando chave reserva...")
@@ -48,7 +67,6 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
                 continue
                 
             return dados
-            
         except Exception as e:
             print(f"⚠️ [Fallback API] Erro de rede com a chave {i+1}: {e}. Pulando para a próxima...")
             ultimo_erro = str(e)
@@ -61,9 +79,15 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
 # =====================================================================
 
 def obter_jogos_do_dia() -> List[Dict[str, Any]]:
+    global JOGOS_DO_DIA_CACHE, ULTIMA_CARGA_JOGOS
+    
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
     hoje_brt = agora_brt.strftime('%Y-%m-%d')
     
+    if hoje_brt == ULTIMA_CARGA_JOGOS and JOGOS_DO_DIA_CACHE:
+        return JOGOS_DO_DIA_CACHE
+    
+    print(f"[Cache API] Realizando consulta real na API-Football para a data {hoje_brt}...")
     dados = fazer_requisicao_api(f"fixtures?date={hoje_brt}")
     todos_jogos = dados.get("response", [])
     
@@ -72,7 +96,11 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
         if jogo["league"]["id"] in LIGAS_MONITORADAS
     ]
     
-    print(f"Data BRT consultada: {hoje_brt} | Total jogos mundo: {len(todos_jogos)} | Filtrados: {len(jogos_filtrados)}")
+    if todos_jogos:
+        JOGOS_DO_DIA_CACHE = jogos_filtrados
+        ULTIMA_CARGA_JOGOS = hoje_brt
+        
+    print(f"Data BRT consultada: {hoje_brt} | Total jogos mundo: {len(todos_jogos)} | Filtrados em cache: {len(jogos_filtrados)}")
     return jogos_filtrados
 
 def obter_dados_recap_dia() -> List[Dict[str, Any]]:
@@ -138,10 +166,7 @@ def obter_dados_recap_dia() -> List[Dict[str, Any]]:
                 "casa": jogo["teams"]["home"]["name"],
                 "fora": jogo["teams"]["away"]["name"],
                 "placar": "Nao iniciado ou Em andamento",
-                "escanteios": "N/A",
-                "cartoes_amarelos": "N/A",
-                "cartoes_vermelhos": "N/A",
-                "faltas": "N/A"
+                "escanteios": "N/A", "cartoes_amarelos": "N/A", "cartoes_vermelhos": "N/A", "faltas": "N/A"
             })
             
     return resumos_com_stats
@@ -149,7 +174,6 @@ def obter_dados_recap_dia() -> List[Dict[str, Any]]:
 def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
     try:
         client = obter_cliente_gemini()
-        
         prompt = (
             "Você é o analista-chefe da cabine do 'VAR do Lucro'. Escreva um balanço diário de fechamento de mercado "
             "altamente profissional, detalhado e técnico para a nossa comunidade de investimentos esportivos.\n\n"
@@ -169,11 +193,7 @@ def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
             "5. Use emojis moderados e quebras de linha elegantes para organizar as seções de forma que seja agradável de ler no celular.\n\n"
             f"Dados consolidados das partidas de hoje:\n{dados_recap}"
         )
-        
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         return response.text
     except Exception as e:
         print(f"Erro ao gerar resumo diário avançado via IA: {e}")
@@ -211,7 +231,7 @@ def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
             "──────────────────────\n\n"
             "REGRAS DE CONVERSÃO E TRADUÇÃO:\n"
             "1. Agrupe as partidas por Campeonato/Liga escrevendo o título do campeonato acima do bloco de jogos.\n"
-            "2. Traduza os nomes de times, países e ligas para o Português do Brasil (ex: 'Brazil' vira 'Brasil', 'Scotland' vira 'Escócia').\n"
+            "2. Traduza os nomes de times, países e ligas para o Português do Brasil.\n"
             "3. NÃO use asteriscos (*) em hipótese alguma na resposta final.\n"
             "4. Adicione emojis esportivos ou as bandeirinhas dos países (ex: 🇧🇷, 🏴󠁧󠁢󠁳󠁣󠁴󠁿) se forem seleções.\n\n"
             f"Lista de jogos do dia:\n{lista_resumida}"
@@ -239,15 +259,8 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
             f"- NÃO use asteriscos (*) em hipótese alguma na resposta."
         )
 
-        configuracao = types.GenerateContentConfig(
-            tools=[types.Tool(google_search=types.GoogleSearch())]
-        )
-
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=configuracao
-        )
+        configuracao = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt, config=configuracao)
         return response.text
     except Exception as e:
         print(f"Erro ao processar relatório pré-jogo: {e}")
@@ -280,7 +293,6 @@ def buscar_jogo_ao_vivo_por_time(nome_time: str) -> Optional[Dict[str, Any]]:
     return None
 
 def gerar_barra_comparativa(val_casa: float, val_fora: float) -> str:
-    """Gera uma barra comparativa com bolinhas azuis e vermelhas."""
     total = val_casa + val_fora
     if total == 0:
         return "⚪⚪⚪⚪⚪⚪⚪⚪⚪⚪"
@@ -289,7 +301,6 @@ def gerar_barra_comparativa(val_casa: float, val_fora: float) -> str:
     return "🔵" * pontos_casa + "🔴" * pontos_fora
 
 def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
-    """Gera o sinal Over Gols no modelo enxuto e impecável do VAR do Lucro."""
     fixture = dados_api["fixture"]
     liga = fixture["league"]["name"]
     time_casa = fixture["teams"]["home"]["name"]
@@ -299,7 +310,6 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
     gols_fora = fixture["goals"]["away"]
     estatisticas_brutas = dados_api["statistics"]
 
-    # Dicionário auxiliar para capturar as estatísticas
     stats_parsed = {
         "home": {"attacks": 0, "corners": 0, "shots": 0, "on_target": 0, "possession": 50},
         "away": {"attacks": 0, "corners": 0, "shots": 0, "on_target": 0, "possession": 50}
@@ -310,23 +320,16 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
         for stat in item["statistics"]:
             tipo = stat["type"]
             valor = stat["value"]
-            if valor is None:
-                valor = 0
+            if valor is None: valor = 0
             if isinstance(valor, str) and "%" in valor:
                 valor = int(valor.replace("%", ""))
                 
-            if tipo == "Dangerous Attacks":
-                stats_parsed[equipe]["attacks"] = int(valor)
-            elif tipo == "Corner Kicks":
-                stats_parsed[equipe]["corners"] = int(valor)
-            elif tipo == "Total Shots":
-                stats_parsed[equipe]["shots"] = int(valor)
-            elif tipo == "Shots on Goal":
-                stats_parsed[equipe]["on_target"] = int(valor)
-            elif tipo == "Ball Possession":
-                stats_parsed[equipe]["possession"] = int(valor)
+            if tipo == "Dangerous Attacks": stats_parsed[equipe]["attacks"] = int(valor)
+            elif tipo == "Corner Kicks": stats_parsed[equipe]["corners"] = int(valor)
+            elif tipo == "Total Shots": stats_parsed[equipe]["shots"] = int(valor)
+            elif tipo == "Shots on Goal": stats_parsed[equipe]["on_target"] = int(valor)
+            elif tipo == "Ball Possession": stats_parsed[equipe]["possession"] = int(valor)
 
-    # Gera as barras comparativas
     barra_ataques = gerar_barra_comparativa(stats_parsed["home"]["attacks"], stats_parsed["away"]["attacks"])
     barra_cantos = gerar_barra_comparativa(stats_parsed["home"]["corners"], stats_parsed["away"]["corners"])
     barra_chutes = gerar_barra_comparativa(stats_parsed["home"]["shots"], stats_parsed["away"]["shots"])
@@ -334,7 +337,6 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
     barra_posse = gerar_barra_comparativa(stats_parsed["home"]["possession"], stats_parsed["away"]["possession"])
 
     try:
-        # A IA só decide a frase curta do sinal para evitar poluir a mensagem
         client = obter_cliente_gemini()
         prompt_ia = (
             f"Analise o ritmo deste jogo aos {tempo_minutos} minutos de jogo. Placar atual: {gols_casa} - {gols_fora}.\n"
@@ -360,33 +362,24 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
     ]
     casa_sugerida_1, link_1 = random.choice(casas_sugestoes)
     
-    # Formatação 100% rígida feita em Python (Livre de falhas da IA)
     mensagem_final = (
         "💎 [Sinal Confirmado - VAR do Lucro PREMIUM]\n\n"
         f"🏟 {liga}\n"
         f"⚽ {time_casa} v {time_fora}\n"
         f"🕐 {tempo_minutos} minutos\n"
         f"🔢 Placar do jogo: {gols_casa} - {gols_fora}\n\n"
-        
         "📊 Dados do jogo (Mandante - Visitante):\n\n"
-        
         f"⚡ Investidas ofensivas: {stats_parsed['home']['attacks']} - {stats_parsed['away']['attacks']}\n"
         f"[ {barra_ataques} ]\n\n"
-        
         f"📐 Escanteios: {stats_parsed['home']['corners']} - {stats_parsed['away']['corners']}\n"
         f"[ {barra_cantos} ]\n\n"
-        
         f"👟 Arremates: {stats_parsed['home']['shots']} - {stats_parsed['away']['shots']}\n"
         f"[ {barra_chutes} ]\n\n"
-        
         f"🎯 Tentativas no alvo: {stats_parsed['home']['on_target']} - {stats_parsed['away']['on_target']}\n"
         f"[ {barra_alvo} ]\n\n"
-        
         f"📈 Controle da bola: {stats_parsed['home']['possession']}% - {stats_parsed['away']['possession']}%\n"
         f"[ {barra_posse} ]\n\n"
-        
         f"🔥 Sinal: {sinal}\n\n"
-        
         "↪ Confira nas casas:\n"
         f"🎲 Pegue na [{casa_sugerida_1}]({link_1})\n\n"
         "Jogue com responsabilidade 🔞"
@@ -397,10 +390,6 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
 # =====================================================================
 # SEÇÃO 3: CONTROLE DE LIGAS, AGENDAMENTOS E CRONOGRAMAS
 # =====================================================================
-
-LIGAS_MONITORADAS = [71, 72, 73, 1, 39, 140, 2]
-JOGOS_ANALISADOS = set()
-ULTIMO_DIA_CRONOGRAMA = ""
 
 def adicionar_liga_monitorada(league_id: int) -> bool:
     global LIGAS_MONITORADAS
@@ -451,6 +440,7 @@ def verificar_e_enviar_cronograma(bot) -> bool:
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
     dia_atual_brt = agora_brt.strftime('%Y-%m-%d')
     if dia_atual_brt != ULTIMO_DIA_CRONOGRAMA:
+        print(f"Novo dia detectado ({dia_atual_brt} BRT). Enviando cronograma...")
         jogos = obter_jogos_do_dia()
         if jogos:
             texto_cronograma = gerar_cronograma_diario_ia(jogos)
@@ -465,29 +455,99 @@ def verificar_e_enviar_cronograma(bot) -> bool:
     return False
 
 def verificar_e_enviar_pre_jogos(bot) -> int:
-    global JOGOS_ANALISADOS
+    """
+    Varre os jogos do dia e gerencia os disparos do relatório pré-jogo de 1 hora
+    e os alertas de contagem regressiva por IA de 3h, 2h e 10m (Sem gasto de API).
+    """
+    global JOGOS_ANALISADOS, ALERTAS_ENVIADOS
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     topico_pre_jogo = os.getenv("TOPICO_PRE_JOGO")
     if not chat_id or not topico_pre_jogo:
         return 0
+        
     jogos = obter_jogos_do_dia()
     agora = datetime.now(timezone.utc)
     enviados = 0
+    
     for jogo in jogos:
         fixture_id = jogo["fixture"]["id"]
-        if fixture_id in JOGOS_ANALISADOS:
-            continue
+        time_casa = jogo["teams"]["home"]["name"]
+        time_fora = jogo["teams"]["away"]["name"]
+        
+        # Traduz os nomes para os alertas rápidos ficarem bonitos em português
+        try:
+            from deep_translator import GoogleTranslator
+            time_casa_pt = GoogleTranslator(source='en', target='pt').translate(time_casa)
+            time_fora_pt = GoogleTranslator(source='en', target='pt').translate(time_fora)
+        except Exception:
+            time_casa_pt, time_fora_pt = time_casa, time_fora
+
         data_jogo_str = jogo["fixture"]["date"]
         data_jogo = datetime.fromisoformat(data_jogo_str.replace("Z", "+00:00"))
         diferenca_tempo = data_jogo - agora
         minutos_para_comecar = diferenca_tempo.total_seconds() / 60
-        if 50 <= minutos_para_comecar <= 70:
-            try:
-                relatorio = gerar_relatorio_pre_jogo(jogo)
-                bot.send_message(chat_id=chat_id, text=relatorio, message_thread_id=int(topico_pre_jogo))
-                JOGOS_ANALISADOS.add(fixture_id)
-                enviados += 1
-                time.sleep(2)
-            except Exception as e:
-                print(f"Falha ao enviar: {e}")
+        
+        # 1. ALERTA DE 3 HORAS ANTES
+        if 170 <= minutos_para_comecar <= 190:
+            chave_alerta = f"{fixture_id}_3h"
+            if chave_alerta not in ALERTAS_ENVIADOS:
+                prompt = (
+                    f"Escreva um alerta curto, divertido e enérgico informando que a partida entre {time_casa_pt} e {time_fora_pt} começará em exatamente 3 horas.\n"
+                    "Tema do grupo: 'VAR do Lucro'. Faça piadas sobre os analistas estarem preparando a tela ou ajustando os óculos para a análise.\n"
+                    "REGRA RÍGIDA: NÃO use asteriscos (*) no texto final. Máximo de 2 linhas."
+                )
+                alerta_texto = gerar_texto_ia_local(prompt)
+                try:
+                    bot.send_message(chat_id=chat_id, text=alerta_texto, message_thread_id=int(topico_pre_jogo))
+                    ALERTAS_ENVIADOS.add(chave_alerta)
+                    enviados += 1
+                except Exception as e:
+                    print(f"Erro alerta 3h: {e}")
+                    
+        # 2. ALERTA DE 2 HORAS ANTES
+        elif 110 <= minutos_para_comecar <= 130:
+            chave_alerta = f"{fixture_id}_2h"
+            if chave_alerta not in ALERTAS_ENVIADOS:
+                prompt = (
+                    f"Escreva um alerta curto, divertido e enérgico informando que a partida entre {time_casa_pt} e {time_fora_pt} começará em exatamente 2 horas.\n"
+                    "Tema do grupo: 'VAR do Lucro'. Diga de forma engraçada para a galera ir se preparando para as análises que estão chegando.\n"
+                    "REGRA RÍGIDA: NÃO use asteriscos (*) no texto final. Máximo de 2 linhas."
+                )
+                alerta_texto = gerar_texto_ia_local(prompt)
+                try:
+                    bot.send_message(chat_id=chat_id, text=alerta_texto, message_thread_id=int(topico_pre_jogo))
+                    ALERTAS_ENVIADOS.add(chave_alerta)
+                    enviados += 1
+                except Exception as e:
+                    print(f"Erro alerta 2h: {e}")
+
+        # 3. ALERTA DE 1 HORA ANTES (ENVIO DO RELATÓRIO DO JOGO)
+        elif 50 <= minutos_para_comecar <= 70:
+            if fixture_id not in JOGOS_ANALISADOS:
+                try:
+                    relatorio = gerar_relatorio_pre_jogo(jogo)
+                    bot.send_message(chat_id=chat_id, text=relatorio, message_thread_id=int(topico_pre_jogo))
+                    JOGOS_ANALISADOS.add(fixture_id)
+                    enviados += 1
+                    time.sleep(2)
+                except Exception as e:
+                    print(f"Falha ao enviar relatório pré-jogo: {e}")
+
+        # 4. ALERTA DE 10 MINUTOS ANTES
+        elif 5 <= minutos_para_comecar <= 15:
+            chave_alerta = f"{fixture_id}_10m"
+            if chave_alerta not in ALERTAS_ENVIADOS:
+                prompt = (
+                    f"Escreva um alerta curto, urgente e divertido avisando que a partida entre {time_casa_pt} e {time_fora_pt} começará em apenas 10 minutos!\n"
+                    "Tema do grupo: 'VAR do Lucro'. Avise os membros a prepararem os dedos na tela e reverem suas stakes, pois a bola já vai rolar.\n"
+                    "REGRA RÍGIDA: NÃO use asteriscos (*) no texto final. Máximo de 2 linhas."
+                )
+                alerta_texto = gerar_texto_ia_local(prompt)
+                try:
+                    bot.send_message(chat_id=chat_id, text=alerta_texto, message_thread_id=int(topico_pre_jogo))
+                    ALERTAS_ENVIADOS.add(chave_alerta)
+                    enviados += 1
+                except Exception as e:
+                    print(f"Erro alerta 10m: {e}")
+                    
     return enviados
