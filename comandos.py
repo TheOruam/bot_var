@@ -4,7 +4,7 @@ import random
 import requests
 from telebot import TeleBot
 from deep_translator import GoogleTranslator
-from analisador import buscar_jogo_ao_vivo_por_time, analisar_ao_vivo_e_formatar, obter_jogos_do_dia, gerar_relatorio_pre_jogo, obter_cliente_gemini
+from analisador import buscar_jogo_ao_vivo_por_time, analisar_ao_vivo_e_formatar, obter_jogos_do_dia, gerar_relatorio_pre_jogo, obter_cliente_gemini, buscar_time_por_nome
 
 # Captura os IDs das salas do ambiente (padrão 0 caso não configurados)
 ID_PRE_JOGO = int(os.getenv("TOPICO_PRE_JOGO", "0"))
@@ -176,6 +176,7 @@ def registrar_comandos(bot: TeleBot):
             return
         
         bot.reply_to(message, f"🔍 Traduzindo e procurando partida ao vivo para '{args}'...")
+        
         args_ingles = traduzir_busca_para_ingles(args)
         
         dados_jogo = buscar_jogo_ao_vivo_por_time(args_ingles)
@@ -381,15 +382,14 @@ def registrar_comandos(bot: TeleBot):
                 
             bot.reply_to(message, f"🔍 Pesquisando dados e montando o painel de analise para '{nome_time}'...")
             
-            from analisador import buscar_ids_ligas, traduzir_busca_para_ingles
+            # 1. Usamos a nossa função integrada do analisador que suporta redundância multi-chave
+            from analisador import buscar_time_por_nome, traduzir_busca_para_ingles
             nome_time_en = traduzir_busca_para_ingles(nome_time)
             
-            headers = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': os.getenv("API_FOOTBALL_KEY")}
             try:
-                res_busca = requests.get(f"https://v3.football.api-sports.io/teams?search={nome_time_en}", headers=headers, timeout=12)
-                times_encontrados = res_busca.json().get("response", [])
+                time_dados = buscar_time_por_nome(nome_time_en)
                 
-                if not times_encontrados:
+                if not time_dados:
                     bot.send_message(
                         chat_id=message.chat.id, 
                         text=f"❌ Nao encontrei nenhum time com o nome '{nome_time}'.",
@@ -397,9 +397,10 @@ def registrar_comandos(bot: TeleBot):
                     )
                     return
                     
-                time_id = times_encontrados[0]["team"]["id"]
-                time_nome = times_encontrados[0]["team"]["name"]
+                time_id = time_dados["team"]["id"]
+                time_nome = time_dados["team"]["name"]
                 
+                # 2. Constrói o botão com a URL do seu servidor Flask de forma robusta
                 url_web_app = f"{os.getenv('WEBHOOK_URL')}/painel_time?team_id={time_id}&league_id=71&season=2024"
                 
                 teclado = telebot.types.InlineKeyboardMarkup()
