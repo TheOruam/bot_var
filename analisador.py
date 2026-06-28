@@ -23,8 +23,8 @@ JOGOS_DO_DIA_CACHE = {
     "fixtures": []    
 }
 
-# DICIONÁRIO DE TRADUÇÃO DIRETA PARA CLUBES, SELEÇÕES, PAÍSES E LIGAS (FOTO 1 E FOTO 2 COBERTOS)
-DICIONARIO_TRADUCAO = {
+# 1. TRADUZ RETORNO EM INGLÊS DA API PARA EXIBIÇÃO EM PORTUGUÊS
+DICIONARIO_EN_PARA_PT = {
     "brazil": "Brasil",
     "scotland": "Escócia",
     "morocco": "Marrocos",
@@ -44,6 +44,29 @@ DICIONARIO_TRADUCAO = {
     "united states": "Estados Unidos",
     "portugal": "Portugal",
     "croatia": "Croácia",
+    "argentina": "Argentina"
+}
+
+# 2. TRADUZ BUSCA EM PORTUGUÊS DO USUÁRIO PARA O INGLÊS DA API
+DICIONARIO_PT_PARA_EN = {
+    "brasil": "Brazil",
+    "escocia": "Scotland",
+    "marrocos": "Morocco",
+    "haiti": "Haiti",
+    "franca": "France",
+    "alemanha": "Germany",
+    "espanha": "Spain",
+    "inglaterra": "England",
+    "italia": "Italy",
+    "belgica": "Belgium",
+    "holanda": "Netherlands",
+    "colombia": "Colombia",
+    "uruguai": "Uruguay",
+    "japao": "Japan",
+    "coreia do sul": "South Korea",
+    "estados unidos": "USA",
+    "portugal": "Portugal",
+    "croacia": "Croatia",
     "argentina": "Argentina"
 }
 
@@ -83,20 +106,25 @@ def normalizar(texto):
     )
     return texto_sub.lower().strip()
 
-def traduzir_nome(nome):
-    """Traduz de forma inteligente nomes de equipes, ligas e países retornados pela API (PT-BR)."""
+def traduzir_en_para_pt(nome):
+    """Traduz nomes da API em inglês para exibição em português do Brasil."""
     if not nome:
         return ""
     nome_norm = nome.lower().strip()
-    
-    # Busca correspondência exata
-    if nome_norm in DICIONARIO_TRADUCAO:
-        return DICIONARIO_TRADUCAO[nome_norm]
-        
-    # Busca correspondência parcial (ex: 'Brazil Cup' -> 'Copa do Brasil')
-    for eng, pt in DICIONARIO_TRADUCAO.items():
+    if nome_norm in DICIONARIO_EN_PARA_PT:
+        return DICIONARIO_EN_PARA_PT[nome_norm]
+    for eng, pt in DICIONARIO_EN_PARA_PT.items():
         if eng in nome_norm:
             nome = nome.replace(eng.title(), pt).replace(eng, pt)
+    return nome
+
+def traduzir_pt_para_en(nome):
+    """Traduz a busca em português do usuário para o inglês aceito pela API."""
+    if not nome:
+        return ""
+    nome_norm = normalizar(nome)
+    if nome_norm in DICIONARIO_PT_PARA_EN:
+        return DICIONARIO_PT_PARA_EN[nome_norm]
     return nome
 
 def obter_bandeira(nome_time):
@@ -223,7 +251,9 @@ def calcular_projecoes_secundarias(dados_jogo, arbitro_stats=None):
 
 def consultar_dados_ao_vivo(termo_busca):
     termo_norm = normalizar(termo_busca)
-    termo_traduzido = normalizar(traduzir_nome(termo_busca))
+    
+    # Converte o termo em português para o inglês da API (ex: 'escócia' vira 'scotland')
+    termo_traduzido_en = normalizar(traduzir_pt_para_en(termo_busca))
     
     dados_live = requisitar_api("fixtures", params={"live": "all"})
     if not dados_live or "response" not in dados_live or not dados_live["response"]:
@@ -234,9 +264,9 @@ def consultar_dados_ao_vivo(termo_busca):
         m_norm = normalizar(item["teams"]["home"]["name"])
         v_norm = normalizar(item["teams"]["away"]["name"])
 
-        # Cruzamento duplo: termo original e termo traduzido
+        # Validação cruzada (Português vs Inglês)
         if (termo_norm in m_norm or termo_norm in v_norm or
-            termo_traduzido in m_norm or termo_traduzido in v_norm):
+            termo_traduzido_en in m_norm or termo_traduzido_en in v_norm):
             partida_encontrada = item
             break
 
@@ -288,9 +318,9 @@ def consultar_dados_painel(time_busca):
         return None
 
     time_id = dados_time["response"][0]["team"]["id"]
-    nome_oficial = traduzir_nome(dados_time["response"][0]["team"]["name"])
+    nome_oficial = traduzir_en_para_pt(dados_time["response"][0]["team"]["name"])
     escudo = dados_time["response"][0]["team"]["logo"]
-    pais = traduzir_nome(dados_time["response"][0]["team"]["country"])
+    pais = traduzir_en_para_pt(dados_time["response"][0]["team"]["country"])
 
     dados_elenco = requisitar_api("players/squads", params={"team": time_id})
     jogadores = []
