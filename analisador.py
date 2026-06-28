@@ -23,6 +23,30 @@ JOGOS_DO_DIA_CACHE = {
     "fixtures": []    
 }
 
+# DICIONÁRIO DE TRADUÇÃO DIRETA PARA CLUBES, SELEÇÕES, PAÍSES E LIGAS (FOTO 1 E FOTO 2 COBERTOS)
+DICIONARIO_TRADUCAO = {
+    "brazil": "Brasil",
+    "scotland": "Escócia",
+    "morocco": "Marrocos",
+    "haiti": "Haiti",
+    "france": "França",
+    "germany": "Alemanha",
+    "spain": "Espanha",
+    "england": "Inglaterra",
+    "italy": "Itália",
+    "belgium": "Bélgica",
+    "netherlands": "Holanda",
+    "colombia": "Colômbia",
+    "uruguay": "Uruguai",
+    "japan": "Japão",
+    "south korea": "Coreia do Sul",
+    "usa": "Estados Unidos",
+    "united states": "Estados Unidos",
+    "portugal": "Portugal",
+    "croatia": "Croácia",
+    "argentina": "Argentina"
+}
+
 # Dicionário de bandeiras para o cronograma
 BANDEIRAS = {
     "brasil": "🇧🇷", "brazil": "🇧🇷",
@@ -59,6 +83,22 @@ def normalizar(texto):
     )
     return texto_sub.lower().strip()
 
+def traduzir_nome(nome):
+    """Traduz de forma inteligente nomes de equipes, ligas e países retornados pela API (PT-BR)."""
+    if not nome:
+        return ""
+    nome_norm = nome.lower().strip()
+    
+    # Busca correspondência exata
+    if nome_norm in DICIONARIO_TRADUCAO:
+        return DICIONARIO_TRADUCAO[nome_norm]
+        
+    # Busca correspondência parcial (ex: 'Brazil Cup' -> 'Copa do Brasil')
+    for eng, pt in DICIONARIO_TRADUCAO.items():
+        if eng in nome_norm:
+            nome = nome.replace(eng.title(), pt).replace(eng, pt)
+    return nome
+
 def obter_bandeira(nome_time):
     nome_norm = normalizar(nome_time)
     for chave, emoji in BANDEIRAS.items():
@@ -67,7 +107,6 @@ def obter_bandeira(nome_time):
     return "⚽"
 
 def incrementar_contador_requisicoes():
-    """Monitora as requisições diárias para respeitar o limite de 100 chamadas."""
     global REQUISICOES_HOJE, DATA_CONTROLE_REQUISICOES
     hoje_str = obter_data_brasilia().strftime("%Y-%m-%d")
     
@@ -79,7 +118,6 @@ def incrementar_contador_requisicoes():
     print(f"[API MONITOR] Requisições hoje: {REQUISICOES_HOJE}/{LIMITE_REQUISICOES_DIARIO}")
 
 def requisitar_api(endpoint, params=None):
-    """Executa requisições na API-Football controlando rigorosamente a cota."""
     global REQUISICOES_HOJE
     hoje_str = obter_data_brasilia().strftime("%Y-%m-%d")
     
@@ -185,6 +223,7 @@ def calcular_projecoes_secundarias(dados_jogo, arbitro_stats=None):
 
 def consultar_dados_ao_vivo(termo_busca):
     termo_norm = normalizar(termo_busca)
+    termo_traduzido = normalizar(traduzir_nome(termo_busca))
     
     dados_live = requisitar_api("fixtures", params={"live": "all"})
     if not dados_live or "response" not in dados_live or not dados_live["response"]:
@@ -195,7 +234,9 @@ def consultar_dados_ao_vivo(termo_busca):
         m_norm = normalizar(item["teams"]["home"]["name"])
         v_norm = normalizar(item["teams"]["away"]["name"])
 
-        if termo_norm in m_norm or termo_norm in v_norm:
+        # Cruzamento duplo: termo original e termo traduzido
+        if (termo_norm in m_norm or termo_norm in v_norm or
+            termo_traduzido in m_norm or termo_traduzido in v_norm):
             partida_encontrada = item
             break
 
@@ -241,26 +282,15 @@ def consultar_dados_ao_vivo(termo_busca):
         "esc_m": escanteios_m, "esc_v": escanteios_v
     }
 
-def extrair_valor_estatistica(stats_lista, tipo):
-    for s in stats_lista:
-        if s["type"] == tipo:
-            val = s["value"]
-            if val is None:
-                return 0
-            if isinstance(val, str) and "%" in val:
-                return float(val.replace("%", "").strip())
-            return float(val)
-    return 0
-
 def consultar_dados_painel(time_busca):
     dados_time = requisitar_api("teams", params={"search": time_busca})
     if not dados_time or "response" not in dados_time or not dados_time["response"]:
         return None
 
     time_id = dados_time["response"][0]["team"]["id"]
-    nome_oficial = dados_time["response"][0]["team"]["name"]
+    nome_oficial = traduzir_nome(dados_time["response"][0]["team"]["name"])
     escudo = dados_time["response"][0]["team"]["logo"]
-    pais = dados_time["response"][0]["team"]["country"]
+    pais = traduzir_nome(dados_time["response"][0]["team"]["country"])
 
     dados_elenco = requisitar_api("players/squads", params={"team": time_id})
     jogadores = []
