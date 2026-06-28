@@ -146,21 +146,20 @@ def loop_tarefas_agendadas():
     """Gerencia alertas de contagem regressiva e publicação automática do cronograma."""
     print("[THREAD AGENDADOR] Iniciado com sucesso.")
     
-    # Executa verificação a cada 60 segundos
     while True:
         try:
             hoje_br = analisador.obter_data_brasilia()
             hora_str = hoje_br.strftime("%H:%M")
             data_str = hoje_br.strftime("%Y-%m-%d")
 
-            # 1. Atualização e postagem do Cronograma às 00:00 Brasília
+            # 1. Publicação automática do Cronograma Diário à meia-noite
             if hora_str == "00:00":
                 print("[AGENDADOR] Meia-noite detectada. Atualizando dados e gerando novo cronograma...")
                 comandos.enviar_cronograma_diario()
-                time.sleep(70) # Evita múltiplos acionamentos no mesmo minuto
+                time.sleep(70) 
                 continue
 
-            # 2. Varredura do cache para detecção de alertas regressivos (3h, 2h, 1h, 10m)
+            # 2. Verificação das contagens regressivas para os jogos cadastrados no cache
             jogos = analisador.obter_jogos_do_dia()
             chat_id = comandos.CHAT_ID_GERAL
             topico_pre = int(comandos.TOPICO_PRE_JOGO) if comandos.TOPICO_PRE_JOGO else None
@@ -169,47 +168,47 @@ def loop_tarefas_agendadas():
                 for j in jogos:
                     match_id = str(j["id"])
                     
-                    # Converte a data de início da partida para o fuso de Brasília
                     try:
                         dt_utc = datetime.fromisoformat(j["data_utc"].replace("Z", "+00:00"))
                         dt_br = dt_utc.astimezone(timezone(timedelta(hours=-3)))
                     except Exception:
                         continue
 
-                    # Calcula a diferença de tempo restante
                     tempo_restante = dt_br - hoje_br
                     minutos_restantes = tempo_restante.total_seconds() / 60
 
-                    # Inicializa a memória de alertas para o jogo caso não exista
                     if match_id not in ALERTAS_ENVIADOS:
                         ALERTAS_ENVIADOS[match_id] = {"3h": False, "2h": False, "1h": False, "10m": False}
 
-                    # Alerta de 3 Horas (170 a 180 minutos)
+                    # Alerta de 3 Horas
                     if 170 <= minutos_restantes <= 180 and not ALERTAS_ENVIADOS[match_id]["3h"]:
                         prompt = f"Gere um alerta divertido e empolgante dizendo que a partida {j['mandante']} x {j['visitante']} começará em 3 horas."
                         texto = analisador.perguntar_ao_gemini(prompt)
                         comandos.bot.send_message(chat_id, f"🔥 <b>VAR REGRESSIVO - 3 HORAS</b>\n\n{texto}", message_thread_id=topico_pre, parse_mode="HTML")
                         ALERTAS_ENVIADOS[match_id]["3h"] = True
 
-                    # Alerta de 2 Horas (110 a 120 minutos)
+                    # Alerta de 2 Horas
                     elif 110 <= minutos_restantes <= 120 and not ALERTAS_ENVIADOS[match_id]["2h"]:
                         prompt = f"Gere um alerta tático curto informando que o jogo {j['mandante']} x {j['visitante']} começará em 2 horas."
                         texto = analisador.perguntar_ao_gemini(prompt)
                         comandos.bot.send_message(chat_id, f"⚠️ <b>VAR REGRESSIVO - 2 HORAS</b>\n\n{texto}", message_thread_id=topico_pre, parse_mode="HTML")
                         ALERTAS_ENVIADOS[match_id]["2h"] = True
 
-                    # Alerta de 1 Hora - ENVIA O DOSSIÊ COMPLETO +EV (50 a 60 minutos)
+                    # Alerta de 1 Hora - ENVIA O DOSSIÊ COMPLETO COM PRECIFICAÇÃO E PROJEÇÕES SECUNDÁRIAS
                     elif 50 <= minutos_restantes <= 60 and not ALERTAS_ENVIADOS[match_id]["1h"]:
                         prompt = (
-                            f"Crie um Dossiê Técnico Completo de Inteligência para a partida {j['mandante']} x {j['visitante']} pela {j['liga']}. "
-                            "Determine cenários mais prováveis de gol com base na força das equipes e sugira de forma categórica uma aposta "
-                            "com valor esperado positivo (+EV), listando as justificativas de forma profissional. Sem asteriscos."
+                            f"Crie um Dossiê Técnico Completo de Inteligência para a partida {j['mandante']} x {j['visitante']} pela {j['liga']}.\n"
+                            "Gere o dossiê contendo:\n"
+                            "1. Uma simulação clara da precificação por Poisson para as probabilidades do jogo e odds justas.\n"
+                            "2. As projeções dos mercados secundários de cartões e escanteios com base nas tendências das equipes.\n"
+                            "3. Uma recomendação de aposta com valor esperado positivo (+EV) justificando a entrada e aplicando o Critério de Kelly Fracionário.\n"
+                            "Diretriz: Nunca utilize asteriscos no texto em hipótese alguma."
                         )
                         texto = analisador.perguntar_ao_gemini(prompt)
                         comandos.bot.send_message(chat_id, f"📊 <b>DOSSIÊ TÉCNICO VAR DO LUCRO (+EV)</b>\n\n{texto}", message_thread_id=topico_pre, parse_mode="HTML")
                         ALERTAS_ENVIADOS[match_id]["1h"] = True
 
-                    # Alerta de 10 minutos (5 a 10 minutos)
+                    # Alerta de 10 minutos
                     elif 5 <= minutos_restantes <= 10 and not ALERTAS_ENVIADOS[match_id]["10m"]:
                         prompt = f"Gere uma chamada imediata curta avisando que as equipes de {j['mandante']} e {j['visitante']} já estão em campo e a partida se iniciará em instantes."
                         texto = analisador.perguntar_ao_gemini(prompt)
@@ -250,6 +249,6 @@ if __name__ == "__main__":
     t_agendador = threading.Thread(target=loop_tarefas_agendadas, daemon=True)
     t_agendador.start()
 
-    # O Flask roda na thread principal para satisfazer a porta do Render instantaneamente (Health Check)
+    # O Flask roda na thread principal para satisfazer a porta do Render instantaneamente
     porta = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=porta)
