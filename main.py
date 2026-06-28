@@ -2,14 +2,15 @@
 import os
 import time
 import threading
+from datetime import datetime, timezone, timedelta
 from flask import Flask, render_template_string, request
 import telebot
 from comandos import registrar_comandos
-from analisador import verificar_e_enviar_pre_jogos, verificar_e_enviar_cronograma, obter_estatisticas_time, obter_elenco_time
+from analisador import verificar_e_enviar_pre_jogos, verificar_e_enviar_cronograma, obter_estatisticas_time, obter_elenco_time, obter_jogos_do_dia
 
 app = Flask(__name__)
 
-# Template HTML e CSS moderno e responsivo que imita perfeitamente as fotos do app de futebol
+# Template HTML e CSS moderno atualizado com suporte a Alerta de Partida de Hoje
 HTML_TEMPLATE_PAINEL = """
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -38,7 +39,7 @@ HTML_TEMPLATE_PAINEL = """
             align-items: center;
             border-bottom: 2px solid #00c2cb;
             padding-bottom: 12px;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
         .header img {
             width: 50px;
@@ -55,6 +56,34 @@ HTML_TEMPLATE_PAINEL = """
             font-size: 0.85rem;
             color: #777;
         }
+        
+        /* CARD DE JOGO DE HOJE */
+        .match-today-card {
+            background: linear-gradient(135deg, #00c2cb, #008f96);
+            color: #fff;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0, 194, 203, 0.15);
+        }
+        .match-today-card .title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .match-today-card .versus {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        .match-today-card .info {
+            font-size: 0.75rem;
+            margin-top: 4px;
+            opacity: 0.9;
+        }
+
         .tabs {
             display: flex;
             background-color: #eaecef;
@@ -72,6 +101,7 @@ HTML_TEMPLATE_PAINEL = """
             background-color: #eaecef;
             border: none;
             color: #666;
+            outline: none;
         }
         .tab.active {
             background-color: #00c2cb;
@@ -151,9 +181,18 @@ HTML_TEMPLATE_PAINEL = """
         <img src="{{ time_logo }}" alt="Logo">
         <div class="header-title">
             <h2>{{ time_nome }}</h2>
-            <p>{{ pais }} | Fundado em {{ fundacao }}</p>
+            <p>{{ pais }} | Estatísticas da Liga</p>
         </div>
     </div>
+
+    <!-- ALERTA DINÂMICO DE JOGO DE HOJE -->
+    {% if jogo_hoje %}
+    <div class="match-today-card">
+        <div class="title">🔥 Tem Jogo de Hoje!</div>
+        <div class="versus">⚽ {{ jogo_hoje_casa }} v {{ jogo_hoje_fora }}</div>
+        <div class="info">🕒 Horário: {{ jogo_hoje_hora }} (BRT) | 🏟️ {{ jogo_hoje_estadio }}</div>
+    </div>
+    {% endif %}
 
     <div class="tabs">
         <button class="tab active" onclick="switchTab('stats')">STATISTICS</button>
@@ -209,14 +248,14 @@ HTML_TEMPLATE_PAINEL = """
             <span>{{ p.name }}</span>
             <span class="player-position">{{ p.position }}</span>
         </div>
-        {% endfor: %}
+        {% endfor %}
     </div>
 </div>
 
 <script>
     function switchTab(tabId) {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.content').forEach(c => t = c.classList.remove('active'));
+        document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
         
         event.currentTarget.classList.add('active');
         document.getElementById(tabId).classList.add('active');
@@ -233,7 +272,7 @@ def home():
 
 @app.route('/painel_time')
 def painel_time():
-    """Rota que alimenta e desenha as estatísticas visuais do time."""
+    """Rota que alimenta e desenha as estatísticas visuais do time, com detector de jogo hoje."""
     team_id = request.args.get('team_id', type=int)
     league_id = request.args.get('league_id', default=71, type=int)
     season = request.args.get('season', default=2024, type=int)
@@ -247,10 +286,33 @@ def painel_time():
     if not stats:
         return "Erro ao obter estatísticas para este campeonato/ano na API.", 400
         
-    # Processa os dados brutos recebidos da API-Football
+    # Processamento das informações de hoje
+    jogos_hoje = obter_jogos_do_dia()
+    jogo_hoje_dados = None
+    
+    # Varre a lista de hoje para ver se o time pesquisado joga hoje
+    for jogo in jogos_hoje:
+        id_casa = jogo["teams"]["home"]["id"]
+        id_fora = jogo["teams"]["away"]["id"]
+        
+        if id_casa == team_id or id_fora == team_id:
+            # Converte a hora UTC do jogo de hoje para o Horário de Brasília
+            data_utc_str = jogo["fixture"]["date"]
+            data_utc = datetime.fromisoformat(data_utc_str.replace("Z", "+00:00"))
+            data_brt = data_utc - timedelta(hours=3)
+            hora_formatada = data_brt.strftime('%H:%M')
+            
+            jogo_hoje_dados = {
+                "casa": jogo["teams"]["home"]["name"],
+                "fora": jogo["teams"]["away"]["name"],
+                "hora": hora_formatada,
+                "estadio": jogo["fixture"]["venue"]["name"] if jogo["fixture"]["venue"]["name"] else "Sem estádio definido"
+            }
+            break
+
+    # Processamento de dados de temporada
     nome = stats["team"]["name"]
     logo = stats["team"]["logo"]
-    
     played = stats["fixtures"]["played"]["total"] or 1
     wins_total = stats["fixtures"]["wins"]["total"] or 0
     clean_sheets = stats["clean_sheet"]["total"] or 0
@@ -259,7 +321,6 @@ def painel_time():
     vit_casa = stats["fixtures"]["wins"]["home"] or 0
     vit_fora = stats["fixtures"]["wins"]["away"] or 0
     
-    # Cálculos de proporção para as barras de progresso
     vitorias_percent = round((wins_total / played) * 100, 1)
     home_percent = round((vit_casa / (wins_total or 1)) * 100, 1)
     away_percent = 100 - home_percent
@@ -274,7 +335,7 @@ def painel_time():
         time_nome=nome,
         time_logo=logo,
         pais=stats["league"]["country"],
-        fundacao="2003",  # Estático ou buscado se necessário
+        fundacao="2003",
         vitorias_percent=vitorias_percent,
         clean_sheets=clean_sheets,
         gols_feitos=gols_total,
@@ -288,7 +349,13 @@ def painel_time():
         gols_fora=gols_fora,
         home_gols_percent=home_gols_percent,
         away_gols_percent=away_gols_percent,
-        elenco=elenco[:15]  # Mostra os primeiros 15 do elenco
+        elenco=elenco[:15],
+        # Variáveis dinâmicas para o card de jogo de hoje
+        jogo_hoje=jogo_hoje_dados is not None,
+        jogo_hoje_casa=jogo_hoje_dados["casa"] if jogo_hoje_dados else "",
+        jogo_hoje_fora=jogo_hoje_dados["fora"] if jogo_hoje_dados else "",
+        jogo_hoje_hora=jogo_hoje_dados["hora"] if jogo_hoje_dados else "",
+        jogo_hoje_estadio=jogo_hoje_dados["estadio"] if jogo_hoje_dados else ""
     )
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
