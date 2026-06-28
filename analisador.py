@@ -273,17 +273,24 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
 # SEÇÃO 2: ANÁLISE EM TEMPO REAL (SOLICITAÇÃO DE JOGO AO VIVO)
 # =====================================================================
 
-def buscar_jogo_ao_vivo_por_time(nome_time: str) -> Optional[Dict[str, Any]]:
+def buscar_jogo_ao_vivo_por_time(nome_orig: str, nome_trad: str) -> Optional[Dict[str, Any]]:
+    """
+    Busca no catálogo de jogos ao vivo ativos. Compara tanto o nome original (em português)
+    quanto o nome traduzido (em inglês) para garantir compatibilidade total de clubes e seleções.
+    """
     dados_live = fazer_requisicao_api("fixtures?live=all")
     jogos_ao_vivo = dados_live.get("response", [])
     
-    nome_time_min = nome_time.lower().strip()
+    orig_min = nome_orig.lower().strip()
+    trad_min = nome_trad.lower().strip()
     
     for jogo in jogos_ao_vivo:
         casa = jogo["teams"]["home"]["name"].lower()
         fora = jogo["teams"]["away"]["name"].lower()
         
-        if nome_time_min in casa or nome_time_min in fora:
+        # Filtro inteligente: bate se o termo em português OU em inglês pertencer a um dos times
+        if (orig_brt := orig_casa_check(orig_term=nome_time_min, casa=casa, fora=fora)) or \
+           orig_min in casa or orig_min in fora or trad_min in casa or trad_min in fora:
             fixture_id = jogo["fixture"]["id"]
             
             dados_stats = fazer_requisicao_api(f"fixtures/statistics?fixture={fixture_id}")
@@ -294,6 +301,10 @@ def buscar_jogo_ao_vivo_por_time(nome_time: str) -> Optional[Dict[str, Any]]:
                 "statistics": stats
             }
     return None
+
+def orig_casa_check(orig_term: str, casa: str, fora: str) -> bool:
+    """Helper interno de segurança para correspondência exata."""
+    return orig_term in casa or orig_term in fora
 
 def gerar_barra_comparativa(val_casa: float, val_fora: float) -> str:
     total = val_casa + val_fora
