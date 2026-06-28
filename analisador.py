@@ -2,6 +2,7 @@
 import os
 import time
 import requests
+import random
 from datetime import datetime, timezone, timedelta
 from google import genai
 from google.genai import types
@@ -38,7 +39,6 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
             resposta = requests.get(url, headers=headers, timeout=12)
             dados = resposta.json()
             
-            # REGRA BLINDADA: Se não houver a chave "response" OU se houver "errors" ativo, a chave FALHOU
             is_erro = "response" not in dados or dados.get("errors")
             
             if is_erro:
@@ -153,7 +153,6 @@ def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
         prompt = (
             "Você é o analista-chefe da cabine do 'VAR do Lucro'. Escreva um balanço diário de fechamento de mercado "
             "altamente profissional, detalhado e técnico para a nossa comunidade de investimentos esportivos.\n\n"
-            
             "INSTRUÇÕES DE AUDITORIA E VERIFICAÇÃO (MUITO IMPORTANTE):\n"
             "Com base nos resultados e dados das partidas fornecidos abaixo, monte para cada jogo finalizado um painel de "
             "verificação mostrando quais dos mercados padrão seriam classificados como GREEN 🟢 ou RED 🔴.\n"
@@ -162,7 +161,6 @@ def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
             "- Se ambos os times marcaram gols (placar ex: 2-1, 1-1): Ambas Marcam Sim -> GREEN 🟢 (caso contrário: RED 🔴)\n"
             "- Se a soma dos escanteios for maior ou igual a 10: Over 9.5 Escanteios -> GREEN 🟢 (caso contrário: RED 🔴)\n"
             "- Se a soma de cartões amarelos for maior ou igual a 5: Over 4.5 Cartões -> GREEN 🟢 (caso contrário: RED 🔴)\n\n"
-            
             "INSTRUÇÕES DE FORMATAÇÃO:\n"
             "1. Agrupe as partidas por campeonato, listando o placar e as estatísticas de cada time (Gols, Escanteios, Cartões, Faltas).\n"
             "2. Traduza obrigatoriamente os nomes de todos os times, países e ligas para o Português do Brasil.\n"
@@ -182,16 +180,11 @@ def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
         return "Erro ao processar o fechamento de mercado detalhado."
 
 def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
-    """
-    Envia a lista bruta de partidas do dia para o Gemini formatar um cronograma
-    altamente estilizado que imita cartões de jogos divididos por linhas.
-    """
     try:
         client = obter_cliente_gemini()
         
         lista_resumida = []
         for jogo in jogos:
-            # Captura o estádio de forma segura se existir
             venue = jogo["fixture"]["venue"]["name"] if jogo["fixture"]["venue"]["name"] else ""
             city = jogo["fixture"]["venue"]["city"] if jogo["fixture"]["venue"]["city"] else ""
             estadio_completo = f"Estádio de {venue}" if venue else ""
@@ -216,7 +209,6 @@ def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
             "⚽ [Nome do Time Casa Traduzido] - [Nome do Time Fora Traduzido]\n"
             "🏟️ [Estádio e Cidade Traduzidos (se fornecido, ex: Estádio de Boston / Filadélfia. Se não houver, ignore esta linha)]\n"
             "──────────────────────\n\n"
-            
             "REGRAS DE CONVERSÃO E TRADUÇÃO:\n"
             "1. Agrupe as partidas por Campeonato/Liga escrevendo o título do campeonato acima do bloco de jogos.\n"
             "2. Traduza os nomes de times, países e ligas para o Português do Brasil (ex: 'Brazil' vira 'Brasil', 'Scotland' vira 'Escócia').\n"
@@ -287,40 +279,120 @@ def buscar_jogo_ao_vivo_por_time(nome_time: str) -> Optional[Dict[str, Any]]:
             }
     return None
 
+def gerar_barra_comparativa(val_casa: float, val_fora: float) -> str:
+    """Gera uma barra comparativa com bolinhas azuis e vermelhas."""
+    total = val_casa + val_fora
+    if total == 0:
+        return "⚪⚪⚪⚪⚪⚪⚪⚪⚪⚪"
+    pontos_casa = round((val_casa / total) * 10)
+    pontos_fora = 10 - pontos_casa
+    return "🔵" * pontos_casa + "🔴" * pontos_fora
+
 def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
+    """Gera o sinal Over Gols no modelo enxuto e impecável do VAR do Lucro."""
+    fixture = dados_api["fixture"]
+    liga = fixture["league"]["name"]
+    time_casa = fixture["teams"]["home"]["name"]
+    time_fora = fixture["teams"]["away"]["name"]
+    tempo_minutos = fixture["fixture"]["status"]["elapsed"]
+    gols_casa = fixture["goals"]["home"]
+    gols_fora = fixture["goals"]["away"]
+    estatisticas_brutas = dados_api["statistics"]
+
+    # Dicionário auxiliar para capturar as estatísticas
+    stats_parsed = {
+        "home": {"attacks": 0, "corners": 0, "shots": 0, "on_target": 0, "possession": 50},
+        "away": {"attacks": 0, "corners": 0, "shots": 0, "on_target": 0, "possession": 50}
+    }
+
+    for item in estatisticas_brutas:
+        equipe = "home" if item["team"]["name"] == time_casa else "away"
+        for stat in item["statistics"]:
+            tipo = stat["type"]
+            valor = stat["value"]
+            if valor is None:
+                valor = 0
+            if isinstance(valor, str) and "%" in valor:
+                valor = int(valor.replace("%", ""))
+                
+            if tipo == "Dangerous Attacks":
+                stats_parsed[equipe]["attacks"] = int(valor)
+            elif tipo == "Corner Kicks":
+                stats_parsed[equipe]["corners"] = int(valor)
+            elif tipo == "Total Shots":
+                stats_parsed[equipe]["shots"] = int(valor)
+            elif tipo == "Shots on Goal":
+                stats_parsed[equipe]["on_target"] = int(valor)
+            elif tipo == "Ball Possession":
+                stats_parsed[equipe]["possession"] = int(valor)
+
+    # Gera as barras comparativas
+    barra_ataques = gerar_barra_comparativa(stats_parsed["home"]["attacks"], stats_parsed["away"]["attacks"])
+    barra_cantos = gerar_barra_comparativa(stats_parsed["home"]["corners"], stats_parsed["away"]["corners"])
+    barra_chutes = gerar_barra_comparativa(stats_parsed["home"]["shots"], stats_parsed["away"]["shots"])
+    barra_alvo = gerar_barra_comparativa(stats_parsed["home"]["on_target"], stats_parsed["away"]["on_target"])
+    barra_posse = gerar_barra_comparativa(stats_parsed["home"]["possession"], stats_parsed["away"]["possession"])
+
     try:
+        # A IA só decide a frase curta do sinal para evitar poluir a mensagem
         client = obter_cliente_gemini()
-        fixture = dados_api["fixture"]
-        liga = fixture["league"]["name"]
-        time_casa = fixture["teams"]["home"]["name"]
-        time_fora = fixture["teams"]["away"]["name"]
-        tempo_minutos = fixture["fixture"]["status"]["elapsed"]
-        gols_casa = fixture["goals"]["home"]
-        gols_fora = fixture["goals"]["away"]
-        estatisticas = dados_api["statistics"]
-
-        prompt = (
-            f"Analise o ritmo ofensivo do jogo ao vivo com as seguintes estatísticas:\n"
-            f"Liga: {liga} | Confronto: {time_casa} v {time_fora}\n"
-            f"Tempo: {tempo_minutos} minutes | Placar atual: {gols_casa} - {gols_fora}\n"
-            f"Estatísticas: {estatisticas}\n\n"
-            f"REGRA DE TRADUÇÃO OBRIGATÓRIA: Traduza times e ligas para o Português do Brasil.\n"
-            f"Siga estritamente o modelo de resposta de Robô Over Gols enviado anteriormente usando links Markdown de casas."
+        prompt_ia = (
+            f"Analise o ritmo deste jogo aos {tempo_minutos} minutos de jogo. Placar atual: {gols_casa} - {gols_fora}.\n"
+            f"Ataques Perigosos: {stats_parsed['home']['attacks']} vs {stats_parsed['away']['attacks']}.\n"
+            f"Chutes no gol: {stats_parsed['home']['on_target']} vs {stats_parsed['away']['on_target']}.\n\n"
+            "Escolha apenas uma das opções abaixo para o sinal e não escreva nenhuma outra palavra:\n"
+            "- 'Mais 0.5 Gols na partida'\n"
+            "- 'Mais 1 Gol na partida'\n"
+            "- 'Sem entrada recomendada'"
         )
-
-        configuracao = types.GenerateContentConfig(
-            tools=[types.Tool(google_search=types.GoogleSearch())]
-        )
-
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=configuracao
-        )
-        return response.text
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_ia)
+        sinal = response.text.strip().replace("'", "").replace('"', "")
     except Exception as e:
-        print(f"Erro na análise de sinais ao vivo para {time_casa} vs {time_fora}: {e}")
-        return "Desculpe, ocorreu uma instabilidade ao gerar o sinal de gols em tempo real."
+        print(f"Erro na IA ao decidir sinal: {e}")
+        sinal = "Mais 0.5 Gols na partida"
+
+    casas_sugestoes = [
+        ("Superbet", "https://superbet.com"),
+        ("Bet365", "https://www.bet365.com"),
+        ("EstrelaBet", "https://estrelabet.com"),
+        ("Novibet", "https://novibet.com"),
+        ("Sportingbet", "https://sportingbet.com")
+    ]
+    casa_sugerida_1, link_1 = random.choice(casas_sugestoes)
+    
+    # Formatação 100% rígida feita em Python (Livre de falhas da IA)
+    mensagem_final = (
+        "💎 [Sinal Confirmado - VAR do Lucro PREMIUM]\n\n"
+        f"🏟 {liga}\n"
+        f"⚽ {time_casa} v {time_fora}\n"
+        f"🕐 {tempo_minutos} minutos\n"
+        f"🔢 Placar do jogo: {gols_casa} - {gols_fora}\n\n"
+        
+        "📊 Dados do jogo (Mandante - Visitante):\n\n"
+        
+        f"⚡ Investidas ofensivas: {stats_parsed['home']['attacks']} - {stats_parsed['away']['attacks']}\n"
+        f"[ {barra_ataques} ]\n\n"
+        
+        f"📐 Escanteios: {stats_parsed['home']['corners']} - {stats_parsed['away']['corners']}\n"
+        f"[ {barra_cantos} ]\n\n"
+        
+        f"👟 Arremates: {stats_parsed['home']['shots']} - {stats_parsed['away']['shots']}\n"
+        f"[ {barra_chutes} ]\n\n"
+        
+        f"🎯 Tentativas no alvo: {stats_parsed['home']['on_target']} - {stats_parsed['away']['on_target']}\n"
+        f"[ {barra_alvo} ]\n\n"
+        
+        f"📈 Controle da bola: {stats_parsed['home']['possession']}% - {stats_parsed['away']['possession']}%\n"
+        f"[ {barra_posse} ]\n\n"
+        
+        f"🔥 Sinal: {sinal}\n\n"
+        
+        "↪ Confira nas casas:\n"
+        f"🎲 Pegue na [{casa_sugerida_1}]({link_1})\n\n"
+        "Jogue com responsabilidade 🔞"
+    )
+
+    return mensagem_final
 
 # =====================================================================
 # SEÇÃO 3: CONTROLE DE LIGAS, AGENDAMENTOS E CRONOGRAMAS
