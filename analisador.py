@@ -59,7 +59,9 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
             resposta = requests.get(url, headers=headers, timeout=12)
             dados = resposta.json()
             
+            # REGRA BLINDADA: Se não houver a chave "response" OU se houver "errors" ativo, a chave FALHOU
             is_erro = "response" not in dados or dados.get("errors")
+            
             if is_erro:
                 erro_detalhado = dados.get("errors") if dados.get("errors") else dados
                 print(f"⚠️ [Fallback API] Chave {i+1} falhou. Motivo: {erro_detalhado}. Tentando chave reserva...")
@@ -67,6 +69,7 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
                 continue
                 
             return dados
+            
         except Exception as e:
             print(f"⚠️ [Fallback API] Erro de rede com a chave {i+1}: {e}. Pulando para a próxima...")
             ultimo_erro = str(e)
@@ -187,8 +190,8 @@ def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
             "- Se a soma de cartões amarelos for maior ou igual a 5: Over 4.5 Cartões -> GREEN 🟢 (caso contrário: RED 🔴)\n\n"
             "INSTRUÇÕES DE FORMATAÇÃO:\n"
             "1. Agrupe as partidas por campeonato, listando o placar e as estatísticas de cada time (Gols, Escanteios, Cartões, Faltas).\n"
-            "2. Traduza obrigatoriamente os nomes de todos os times, países e ligas para o Português do Brasil.\n"
-            "3. Escreva uma análise curta no final destacando como foi o rendimento estatístico do dia de hoje de forma geral.\n"
+            "2. Traduza os nomes de todos os times, países e ligas para o Português do Brasil.\n"
+            "3. Escreva uma análise curta no final destacando como foi o rendimento estatístico de hoje de forma geral.\n"
             "4. NÃO use asteriscos (*) em nenhuma parte da mensagem.\n"
             "5. Use emojis moderados e quebras de linha elegantes para organizar as seções de forma que seja agradável de ler no celular.\n\n"
             f"Dados consolidados das partidas de hoje:\n{dados_recap}"
@@ -330,6 +333,7 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
             elif tipo == "Shots on Goal": stats_parsed[equipe]["on_target"] = int(valor)
             elif tipo == "Ball Possession": stats_parsed[equipe]["possession"] = int(valor)
 
+    # Gera as barras comparativas
     barra_ataques = gerar_barra_comparativa(stats_parsed["home"]["attacks"], stats_parsed["away"]["attacks"])
     barra_cantos = gerar_barra_comparativa(stats_parsed["home"]["corners"], stats_parsed["away"]["corners"])
     barra_chutes = gerar_barra_comparativa(stats_parsed["home"]["shots"], stats_parsed["away"]["shots"])
@@ -362,24 +366,33 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
     ]
     casa_sugerida_1, link_1 = random.choice(casas_sugestoes)
     
+    # Formatação visual enxuta em blocos verticais compactos
     mensagem_final = (
         "💎 [Sinal Confirmado - VAR do Lucro PREMIUM]\n\n"
         f"🏟 {liga}\n"
         f"⚽ {time_casa} v {time_fora}\n"
         f"🕐 {tempo_minutos} minutos\n"
         f"🔢 Placar do jogo: {gols_casa} - {gols_fora}\n\n"
+        
         "📊 Dados do jogo (Mandante - Visitante):\n\n"
+        
         f"⚡ Investidas ofensivas: {stats_parsed['home']['attacks']} - {stats_parsed['away']['attacks']}\n"
         f"[ {barra_ataques} ]\n\n"
+        
         f"📐 Escanteios: {stats_parsed['home']['corners']} - {stats_parsed['away']['corners']}\n"
         f"[ {barra_cantos} ]\n\n"
+        
         f"👟 Arremates: {stats_parsed['home']['shots']} - {stats_parsed['away']['shots']}\n"
         f"[ {barra_chutes} ]\n\n"
+        
         f"🎯 Tentativas no alvo: {stats_parsed['home']['on_target']} - {stats_parsed['away']['on_target']}\n"
         f"[ {barra_alvo} ]\n\n"
+        
         f"📈 Controle da bola: {stats_parsed['home']['possession']}% - {stats_parsed['away']['possession']}%\n"
         f"[ {barra_posse} ]\n\n"
+        
         f"🔥 Sinal: {sinal}\n\n"
+        
         "↪ Confira nas casas:\n"
         f"🎲 Pegue na [{casa_sugerida_1}]({link_1})\n\n"
         "Jogue com responsabilidade 🔞"
