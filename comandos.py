@@ -51,6 +51,22 @@ def traduzir_busca_para_ingles(termo: str) -> str:
         print(f"Erro na tradução pré-busca: {e}")
         return termo
 
+def gerar_texto_interativo_ia(prompt: str) -> str:
+    """
+    Gera textos criativos e inéditos em tempo real usando o Google Gemini 2.5 Flash.
+    Mantém o ecossistema do grupo sempre dinâmico e atrativo.
+    """
+    try:
+        client = obter_cliente_gemini()
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Erro ao gerar texto interativo com a IA: {e}")
+        return "Erro temporário de conexão com a cabine do VAR. Tente novamente em instantes."
+
 def registrar_comandos(bot: TeleBot):
     """Registra todos os comandos e faz a triagem das salas de destino."""
 
@@ -219,13 +235,11 @@ def registrar_comandos(bot: TeleBot):
                 status_gemini = f"FALHA ({e})"
                 
             try:
-                # Testa usando a primeira chave de redundância configurada
                 primeira_chave = [k.strip() for k in chave_football.split(",") if k.strip()][0]
                 headers = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': primeira_chave}
                 res = requests.get("https://v3.football.api-sports.io/status", headers=headers, timeout=5)
                 dados_status = res.json()
                 
-                # Validação real se a chave está suspensa ou inválida
                 if "response" not in dados_status or dados_status.get("errors"):
                     erro_recebido = dados_status.get("errors") if dados_status.get("errors") else dados_status
                     status_api_football = f"FALHA (Erro retornado: {erro_recebido})"
@@ -341,7 +355,6 @@ def registrar_comandos(bot: TeleBot):
                 
                 texto_resumo = gerar_resumo_diario_ia(dados_recap)
                 
-                # Envia o balanço consolidado direto na sala Pré-Jogo (público)
                 bot.send_message(
                     chat_id=int(os.getenv("TELEGRAM_CHAT_ID")),
                     text=texto_resumo,
@@ -480,70 +493,71 @@ def registrar_comandos(bot: TeleBot):
         comando = message.text.split()[0].replace('/', '').strip().lower()
 
         if comando == 'bemvindo':
+            prompt = (
+                "Escreva uma mensagem de boas-vindas extremamente divertida, criativa e animada para um novo membro "
+                "que acabou de entrar no nosso grupo do Telegram.\n"
+                "TEMA DO GRUPO: 'VAR do Lucro' (grupo focado em análises técnicas de futebol e investimentos esportivos).\n"
+                "A narrativa deve ser inspirada na cabine do VAR revisando os batimentos cardíacos, o perfil e a carteira do novato e 'confirmando no monitor' a aprovação para o lucro.\n"
+                "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português fluído do Brasil."
+            )
+            texto = gerar_texto_interativo_ia(prompt)
             bot.send_message(
                 chat_id=message.chat.id, 
-                text=(
-                    "Atencao cabine do VAR! Temos um novo integrante na mesa de operacoes!\n\n"
-                    "Analisando o perfil do novato em nossa tela de transmissao...\n"
-                    "Checando dados... Verificando batimentos cardiacos... Analisando a carteira...\n\n"
-                    "DECISAO CONFIRMADA NO MONITOR:\n"
-                    "Cadastro aprovado com sucesso! Seja muito bem-vindo ao VAR do Lucro!\n"
-                    "Prepare sua planilha, ajuste sua stake e junte-se aos operadores profissionais de elite."
-                ),
+                text=texto,
                 message_thread_id=message.message_thread_id
             )
 
         elif comando == 'bomdia':
+            prompt = (
+                "Escreva um bom dia extremamente enérgico, motivador e focado no sucesso para a nossa comunidade "
+                "de investidores esportivos da 'VAR do Lucro'.\n"
+                "Incentive-os a analisar bem, respeitar a gestão de stake (banca) e manter o controle emocional hoje.\n"
+                "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português."
+            )
+            texto = gerar_texto_interativo_ia(prompt)
             bot.send_message(
                 chat_id=message.chat.id, 
-                text=(
-                    "Bom dia, mercado! Os monitores ja estao ligados e as APIs aquecidas!\n\n"
-                    "Hoje o dia promete muitas oportunidades na nossa mesa de analise. "
-                    "Lembre-se das regras de ouro para hoje:\n"
-                    "1. Proteja seu capital (stake controlada).\n"
-                    "2. Estude os relatorios antes de clicar.\n"
-                    "3. Mantenha a calma de um monge, ganhando ou perdendo.\n\n"
-                    "Que o valor esperado positivo esteja conosco. Bons investimentos a todos!"
-                ),
+                text=texto,
                 message_thread_id=message.message_thread_id
             )
 
         elif comando == 'green':
+            prompt = (
+                "Escreva uma comemoração de GREEN (aposta ganha) extremamente explosiva, vitoriosa e barulhenta para a nossa comunidade 'VAR do Lucro'.\n"
+                "Celebre a precisão técnica do nosso método VAR e comemore o lucro colocado no bolso hoje.\n"
+                "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português."
+            )
+            texto = gerar_texto_interativo_ia(prompt)
             bot.send_message(
                 chat_id=message.chat.id, 
-                text=(
-                    "EXPLODIU O GREEN DA NOSSA ANALISE!\n\n"
-                    "A analise cirurgica do nosso relatorio bateu exatamente com o andamento do jogo!\n"
-                    "Quem seguiu a gestao de banca e entrou na recomendacao do VAR do Lucro acabou de colocar dinheiro no bolso!\n"
-                    "O mercado tentou segurar, mas a nossa leitura tecnica foi implacavel.\n"
-                    "Parabens aos lucros coletados! Comemore sem perder o foco na proxima operacao."
-                ),
+                text=texto,
                 message_thread_id=message.message_thread_id
             )
 
         elif comando == 'red':
+            prompt = (
+                "Escreva uma mensagem de consolo técnica e psicológica pós-RED (aposta perdida) para a comunidade 'VAR do Lucro'.\n"
+                "O tom deve ser profissional, calmo e altamente focado na importância de seguir a gestão de banca rigorosa (usar stake de 1% a 3%) "
+                "e por que a matemática a longo prazo sempre vence as variações do futebol.\n"
+                "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português."
+            )
+            texto = gerar_texto_interativo_ia(prompt)
             bot.send_message(
                 chat_id=message.chat.id, 
-                text=(
-                    "Atenção operadores: Red detectado.\n\n"
-                    "O futebol tem variaveis imprevisiveis que nenhuma estatistica consegue blindar 100 por cento.\n"
-                    "Mas e aqui que se separam os amadores dos profissionais:\n"
-                    "Seguir estritamente a nossa stake de 1 a 3 por cento garante que esse tropeço nao afete sua saude financeira.\n"
-                    "Nao tente recuperar o valor perdido imediatamente com apostas desesperadas sem estudo.\n"
-                    "Mantenha o controle emocional. A longo prazo, a consistencia matematica sempre vence."
-                ),
+                text=texto,
                 message_thread_id=message.message_thread_id
             )
 
         elif comando == 'resenha':
-            curiosidades = [
-                "Voce sabia que em 1998, um raio atingiu o gramado durante um jogo no Congo e matou todos os 11 jogadores de um time, enquanto o outro time saiu completamente ileso? Bizarro demais!",
-                "Na Inglaterra, o jogador Lee Todd levou o cartao vermelho mais rapido da historia: apenas 2 segundos de jogo! Ao ouvir o apito inicial do juiz perto do seu ouvido, ele exclamou: Caramba, isso foi muito alto! E foi expulso.",
-                "Em 1945, um jogo entre Arsenal e Dynamo de Moscou ocorreu sob uma névoa tao densa que ninguem enxergava nada. O Dynamo fez substituicoes sem ninguem perceber e acabou jogando com 15 jogadores em campo por quase meia hora!"
-            ]
+            prompt = (
+                "Escreva uma curiosidade real, extremamente bizarra, boba ou engraçada sobre a história do futebol mundial.\n"
+                "O texto deve ser curto, divertido e perfeito para prender a atenção do nosso grupo 'VAR do Lucro'.\n"
+                "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português."
+            )
+            texto = gerar_texto_interativo_ia(prompt)
             bot.send_message(
                 chat_id=message.chat.id, 
-                text="CURIOSIDADE DO VAR DO LUCRO\n\n" + random.choice(curiosidades),
+                text=texto,
                 message_thread_id=message.message_thread_id
             )
 
@@ -552,26 +566,22 @@ def registrar_comandos(bot: TeleBot):
     # =====================================================================
     @bot.message_handler(content_types=['new_chat_members'])
     def boas_vindas_automatico(message):
-        """
-        Detecta automaticamente a entrada de novos usuários no grupo 
-        e envia a mensagem de acolhimento do VAR na sala de Resenha.
-        """
         if not ID_RESENHA:
             return
 
-        texto_boas_vindas = (
-            "Atencao cabine do VAR! Temos um novo integrante na mesa de operacoes!\n\n"
-            "Analisando o perfil do novato em nossa tela de transmissao...\n"
-            "Checando dados... Verificando batimentos cardiacos... Analisando a carteira...\n\n"
-            "DECISAO CONFIRMADA NO MONITOR:\n"
-            "Cadastro aprovado com sucesso! Seja muito bem-vindo ao VAR do Lucro!\n"
-            "Prepare sua planilha, ajuste sua stake e junte-se aos operadores profissionais de elite."
+        prompt = (
+            "Escreva uma mensagem de boas-vindas extremamente divertida, criativa e animada para um novo membro "
+            "que acabou de entrar no nosso grupo do Telegram.\n"
+            "TEMA DO GRUPO: 'VAR do Lucro' (grupo focado em análises técnicas de futebol e investimentos esportivos).\n"
+            "A narrativa deve ser inspirada na cabine do VAR revisando os batimentos cardíacos, o perfil e a carteira do novato e 'confirmando no monitor' a aprovação para o lucro.\n"
+            "REGRAS RÍGIDAS: NÃO use asteriscos (*) no texto final. Mantenha em português fluído do Brasil."
         )
+        texto = gerar_texto_interativo_ia(prompt)
 
         try:
             bot.send_message(
                 chat_id=message.chat.id,
-                text=texto_boas_vindas,
+                text=texto,
                 message_thread_id=ID_RESENHA
             )
         except Exception as e:
