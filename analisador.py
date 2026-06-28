@@ -14,7 +14,7 @@ API_KEYS = [k.strip() for k in os.getenv("API_FOOTBALL_KEY", "").split(",") if k
 
 # Cache em memória para reduzir consumo da API
 JOGOS_DO_DIA_CACHE = {
-    "data": None,     # Armazena a data da última atualização (DD-MM-YYYY)
+    "data": None,     # Armazena a data da última atualização (YYYY-MM-DD)
     "fixtures": []    # Lista de jogos do dia
 }
 
@@ -73,7 +73,6 @@ def requisitar_api(endpoint, params=None):
             response = requests.get(url, headers=headers, params=params, timeout=12)
             if response.status_code == 200:
                 dados = response.json()
-                # Verifica se a resposta é válida e contém a chave de resposta da API-Football
                 if "response" in dados and dados["response"] is not None:
                     return dados
                 else:
@@ -92,20 +91,17 @@ def obter_jogos_do_dia(forcar=False):
     hoje_br = obter_data_brasilia()
     data_str = hoje_br.strftime("%Y-%m-%d")
 
-    # Verifica se já temos o cache do dia atual para evitar requisições desnecessárias
     if not forcar and JOGOS_DO_DIA_CACHE["data"] == data_str and JOGOS_DO_DIA_CACHE["fixtures"]:
         print("[CACHE] Utilizando jogos salvos em cache.")
         return JOGOS_DO_DIA_CACHE["fixtures"]
 
     print(f"[API] Buscando jogos do dia {data_str} na API...")
-    # Filtra pelas principais ligas para economizar processamento, ou traz geral
     params = {"date": data_str}
     dados = requisitar_api("fixtures", params=params)
 
     if dados and "response" in dados:
         fixtures_filtradas = []
         for item in dados["response"]:
-            # Armazena apenas dados estruturados essenciais
             fixtures_filtradas.append({
                 "id": item["fixture"]["id"],
                 "data_utc": item["fixture"]["date"],
@@ -119,7 +115,6 @@ def obter_jogos_do_dia(forcar=False):
                 "estadio": item["fixture"]["venue"]["name"] or "Estádio Desconhecido"
             })
         
-        # Atualiza o cache local
         JOGOS_DO_DIA_CACHE["data"] = data_str
         JOGOS_DO_DIA_CACHE["fixtures"] = fixtures_filtradas
         print(f"[CACHE] {len(fixtures_filtradas)} jogos armazenados no cache diário.")
@@ -157,13 +152,55 @@ def extrair_valor_estatistica(stats_lista, tipo):
             return float(val)
     return 0
 
+def calcular_projecoes_secundarias(dados_jogo, arbitro_stats=None):
+    """
+    Executa o cálculo preditivo das linhas secundárias utilizando dados reais do jogo.
+    Caso não existam dados do árbitro no momento, adota médias seguras da liga.
+    """
+    if not arbitro_stats:
+        arbitro_stats = {
+            "media_cartoes": 4.8,
+            "media_faltas": 24.5,
+            "rigor_cartao_por_falta": 0.19
+        }
+
+    tempo_decorrido = float(dados_jogo["tempo"]) if float(dados_jogo["tempo"]) > 0 else 1.0
+    tempo_restante = 90 - tempo_decorrido
+    if tempo_restante < 5:
+        tempo_restante = 5
+
+    # 1. PREDIÇÃO DE ESCANTEIOS
+    cantos_atuais = float(dados_jogo["esc_m"] + dados_jogo["esc_v"])
+    taxa_cantos_por_minuto = cantos_atuais / tempo_decorrido
+    
+    if taxa_cantos_por_minuto < 0.10:
+        taxa_cantos_por_minuto = 0.10
+
+    apm_total = (float(dados_jogo["atqp_m"]) + float(dados_jogo["atqp_v"])) / tempo_decorrido
+    if apm_total > 1.4:
+        taxa_cantos_por_minuto *= 1.25
+
+    escanteios_projetados = cantos_atuais + (taxa_cantos_por_minuto * tempo_restante)
+
+    # 2. PREDIÇÃO DE FALTAS
+    faltas_medias_times = 25.0
+    faltas_projetadas = (faltas_medias_times + arbitro_stats["media_faltas"]) / 2
+
+    # 3. PREDIÇÃO DE CARTÕES
+    cartoes_projetados = faltas_projetadas * arbitro_stats["rigor_cartao_por_falta"]
+
+    return {
+        "escanteios_final_projetado": round(escanteios_projetados, 1),
+        "faltas_final_projetado": round(faltas_projetadas, 0),
+        "cartoes_final_projetado": round(cartoes_projetados, 1)
+    }
+
 def consultar_dados_ao_vivo(termo_busca):
     """Busca um jogo que esteja ocorrendo agora baseado no nome do time (busca dupla)."""
     print(f"[AO VIVO] Buscando partida ativa contendo: '{termo_busca}'")
     termo_norm = normalizar(termo_busca)
     termo_traduzido = TRADUCOES.get(termo_norm, termo_norm)
 
-    # 1. Busca todas as partidas que estão acontecendo no momento
     dados_live = requisitar_api("fixtures", params={"live": "all"})
     if not dados_live or "response" not in dados_live or not dados_live["response"]:
         return None
@@ -173,7 +210,6 @@ def consultar_dados_ao_vivo(termo_busca):
         m_norm = normalizar(item["teams"]["home"]["name"])
         v_norm = normalizar(item["teams"]["away"]["name"])
 
-        # Executa cruzamento duplo (português e inglês) para evitar falhas de nomenclatura
         if (termo_norm in m_norm or termo_norm in v_norm or 
             termo_traduzido in m_norm or termo_traduzido in v_norm):
             partida_encontrada = item
@@ -182,7 +218,6 @@ def consultar_dados_ao_vivo(termo_busca):
     if not partida_encontrada:
         return None
 
-    # 2. Busca estatísticas detalhadas da partida encontrada
     fixture_id = partida_encontrada["fixture"]["id"]
     dados_stats = requisitar_api("fixtures/statistics", params={"fixture": fixture_id})
 
@@ -192,7 +227,6 @@ def consultar_dados_ao_vivo(termo_busca):
         stats_mandante = dados_stats["response"][0]["statistics"]
         stats_visitante = dados_stats["response"][1]["statistics"]
 
-    # Processa estatísticas fundamentais para as barras visuais
     posse_m = extrair_valor_estatistica(stats_mandante, "Ball Possession")
     posse_v = extrair_valor_estatistica(stats_visitante, "Ball Possession")
     if posse_m == 0 and posse_v == 0:
@@ -210,7 +244,6 @@ def consultar_dados_ao_vivo(termo_busca):
     escanteios_m = extrair_valor_estatistica(stats_mandante, "Corner Kicks")
     escanteios_v = extrair_valor_estatistica(stats_visitante, "Corner Kicks")
 
-    # Monta estrutura limpa de dados
     dados_jogo = {
         "id": fixture_id,
         "mandante": partida_encontrada["teams"]["home"]["name"],
@@ -236,9 +269,6 @@ def consultar_dados_ao_vivo(termo_busca):
 
 def consultar_dados_painel(time_busca):
     """Busca o elenco e estatísticas básicas de uma equipe para renderizar no Web App."""
-    time_norm = normalizar(time_busca)
-    
-    # Busca o ID do time a partir de uma busca geral na API
     dados_time = requisitar_api("teams", params={"search": time_busca})
     if not dados_time or "response" not in dados_time or not dados_time["response"]:
         return None
@@ -247,7 +277,6 @@ def consultar_dados_painel(time_busca):
     nome_oficial = dados_time["response"][0]["team"]["name"]
     escudo = dados_time["response"][0]["team"]["logo"]
 
-    # Busca o elenco da equipe
     dados_elenco = requisitar_api("players/squads", params={"team": time_id})
     jogadores = []
     if dados_elenco and "response" in dados_elenco and dados_elenco["response"]:
@@ -258,7 +287,6 @@ def consultar_dados_painel(time_busca):
                 "idade": j["age"] or "--"
             })
 
-    # Dados padrão fictícios estruturados para evitar falhas caso o time não dispute a liga padrão
     estatisticas = {
         "vitorias": 14,
         "empates": 6,
@@ -282,7 +310,6 @@ def perguntar_ao_gemini(contexto, instrucao_sistema=""):
         return "IA indisponível no momento. Por favor, tente novamente mais tarde."
 
     try:
-        # Garante a proibição de asteriscos nas instruções do sistema
         regra_estrita = (
             "Sua personalidade: Analista tático profissional do grupo VAR do Lucro.\n"
             "DIRETRIZ OBRIGATÓRIA: Nunca use o caractere asterisco (*) em nenhuma parte da resposta. "
@@ -299,7 +326,7 @@ def perguntar_ao_gemini(contexto, instrucao_sistema=""):
         resposta = model.generate_content(contexto)
         texto_limpo = resposta.text
 
-        # Varredura redundante de caracteres de formatação Markdown inválidos no Telegram
+        # Garante a remoção de todos os asteriscos (prevenção de quebra do Telegram)
         texto_limpo = texto_limpo.replace("*", "")
         return texto_limpo.strip()
 
