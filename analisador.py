@@ -175,28 +175,47 @@ def obter_dados_recap_dia() -> List[Dict[str, Any]]:
     return resumos_com_stats
 
 def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
+    """
+    Envia a lista de partidas enriquecidas com estatísticas para o Gemini,
+    gerando um balanço diário que contém todas as estatísticas e auditorias 
+    consolidadas de forma ultra-resumida (máximo de 3 linhas por partida).
+    """
     try:
         client = obter_cliente_gemini()
+        
         prompt = (
             "Você é o analista-chefe da cabine do 'VAR do Lucro'. Escreva um balanço diário de fechamento de mercado "
-            "altamente profissional, detalhado e técnico para a nossa comunidade de investimentos esportivos.\n\n"
-            "INSTRUÇÕES DE AUDITORIA E VERIFICAÇÃO (MUITO IMPORTANTE):\n"
-            "Com base nos resultados e dados das partidas fornecidos abaixo, monte para cada jogo finalizado um painel de "
-            "verificação mostrando quais dos mercados padrão seriam classificados como GREEN 🟢 ou RED 🔴.\n"
-            "Exemplos de auditoria que você deve fazer:\n"
-            "- Se a soma de gols da partida for maior que 2.5: Over 2.5 Gols -> GREEN 🟢 (caso contrário: RED 🔴)\n"
-            "- Se ambos os times marcaram gols (placar ex: 2-1, 1-1): Ambas Marcam Sim -> GREEN 🟢 (caso contrário: RED 🔴)\n"
-            "- Se a soma dos escanteios for maior ou igual a 10: Over 9.5 Escanteios -> GREEN 🟢 (caso contrário: RED 🔴)\n"
-            "- Se a soma de cartões amarelos for maior ou igual a 5: Over 4.5 Cartões -> GREEN 🟢 (caso contrário: RED 🔴)\n\n"
-            "INSTRUÇÕES DE FORMATAÇÃO:\n"
-            "1. Agrupe as partidas por campeonato, listando o placar e as estatísticas de cada time (Gols, Escanteios, Cartões, Faltas).\n"
+            "altamente profissional, técnico e ultra-resumido para a nossa comunidade de investimentos esportivos.\n\n"
+            
+            "INSTRUÇÃO DE CONTEÚDO COMPACTO (MUITO IMPORTANTE):\n"
+            "Você deve incluir todas as informações estatísticas e de auditoria de Greens/Reds de cada partida concluída, "
+            "mas de forma extremamente sintetizada e curta para ocupar o menor espaço vertical possível no celular.\n"
+            "Use rigorosamente esta estrutura enxuta de 3 linhas por partida para consolidar tudo:\n\n"
+            "⚽ [Time Casa Traduzido] [Gols Casa] - [Gols Fora] [Time Fora Traduzido]\n"
+            "📐 Cantos: [Casa]v[Fora] | 🟨 Cartões: [Casa]v[Fora] | ⚡ Faltas: [Casa]v[Fora]\n"
+            "🟢 Over 2.5 Gols: [GREEN ou RED] | Ambas Marcam: [GREEN ou RED] | Over 9.5 Cantos: [GREEN ou RED] | Over 4.5 Cartões: [GREEN ou RED]\n"
+            "──────────────────────\n\n"
+            
+            "INSTRUÇÕES DE AUDITORIA:\n"
+            "Com base nos dados reais fornecidos abaixo, classifique cada um dos 4 mercados acima de forma exata:\n"
+            "- Over 2.5 Gols -> GREEN 🟢 se a soma de gols for maior que 2.5 (caso contrário RED 🔴)\n"
+            "- Ambas Marcam -> GREEN 🟢 se ambos os times marcaram gols (caso contrário RED 🔴)\n"
+            "- Over 9.5 Cantos -> GREEN 🟢 se a soma de escanteios for maior ou igual a 10 (caso contrário RED 🔴)\n"
+            "- Over 4.5 Cartões -> GREEN 🟢 se a soma de cartões amarelos for maior ou igual a 5 (caso contrário RED 🔴)\n\n"
+            
+            "INSTRUÇÕES DE FORMATAÇÃO E TRADUÇÃO:\n"
+            "1. Agrupe as partidas por campeonato escrevendo o nome do campeonato acima de cada bloco de jogos.\n"
             "2. Traduza os nomes de todos os times, países e ligas para o Português do Brasil.\n"
-            "3. Escreva uma análise curta no final destacando como foi o rendimento estatístico do dia de hoje de forma geral.\n"
+            "3. Escreva um parágrafo curtíssimo de fechamento e motivação no final (máximo 2 linhas).\n"
             "4. NÃO use asteriscos (*) em nenhuma parte da mensagem.\n"
-            "5. Use emojis moderados e quebras de linha elegantes para organizar as seções de forma que seja agradável de ler no celular.\n\n"
+            "5. Use emojis moderados e quebras de linha elegantes para organizar as seções de forma agradável.\n\n"
             f"Dados consolidados das partidas de hoje:\n{dados_recap}"
         )
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
         return response.text
     except Exception as e:
         print(f"Erro ao gerar resumo diário avançado via IA: {e}")
