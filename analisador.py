@@ -107,6 +107,7 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     return jogos_filtrados
 
 def obter_dados_recap_dia() -> List[Dict[str, Any]]:
+    """Busca as partidas de hoje e extrai as estatísticas detalhadas de escanteios, cartões e faltas com delay anti-suspensão de cota."""
     jogos = obter_jogos_do_dia()
     resumos_com_stats = []
     
@@ -133,7 +134,7 @@ def obter_dados_recap_dia() -> List[Dict[str, Any]]:
                 dados_stats = fazer_requisicao_api(f"fixtures/statistics?fixture={fixture_id}")
                 stats_response = dados_stats.get("response", [])
                 
-                # [Ajuste de Segurança]: Pausa obrigatória de 3 segundos para nunca estourar o limite de 10 requisições/minuto!
+                # [Anti-Abuso de Cota] Pausa de 3 segundos para evitar banimento por excesso de requisições por minuto (10 RPM)
                 time.sleep(3)
                 
                 for team_stat in stats_response:
@@ -211,7 +212,7 @@ def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
             "2. Traduza os nomes de todos os times, países e ligas para o Português do Brasil.\n"
             "3. Escreva um parágrafo curtíssimo de fechamento e motivação no final (máximo 2 linhas).\n"
             "4. NÃO use asteriscos (*) em nenhuma parte da mensagem.\n"
-            "5. Use emojis moderados e quebras de linha elegantes para organizar as seções de forma agradável.\n\n"
+            "5. Use emojis moderados e quebras de linha elegantes para organizar as seções de forma que seja agradável.\n\n"
             f"Dados consolidados das partidas de hoje:\n{dados_recap}"
         )
         
@@ -225,16 +226,26 @@ def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
         return "Erro ao processar o fechamento de mercado detalhado."
 
 def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
+    """
+    Envia a lista bruta de partidas do dia para o Gemini formatar um cronograma
+    altamente estilizado de forma 100% segura contra falhas de estádios vazios (null/None) da API.
+    """
     try:
         client = obter_cliente_gemini()
         
         lista_resumida = []
         for jogo in jogos:
-            venue = jogo["fixture"]["venue"]["name"] if jogo["fixture"]["venue"]["name"] else ""
-            city = jogo["fixture"]["venue"]["city"] if jogo["fixture"]["venue"]["city"] else ""
-            estadio_completo = f"Estádio de {venue}" if venue else ""
-            if city and estadio_completo:
-                estadio_completo += f" - {city}"
+            # Captura o estádio de forma totalmente segura e blindada contra "NoneType" da API
+            venue_dict = jogo["fixture"].get("venue")
+            venue_name = ""
+            city_name = ""
+            if isinstance(venue_dict, dict):
+                venue_name = venue_dict.get("name") if venue_dict.get("name") else ""
+                city_name = venue_dict.get("city") if venue_dict.get("city") else ""
+                
+            estadio_completo = f"Estádio de {venue_name}" if venue_name else ""
+            if city_name and estadio_completo:
+                estadio_completo += f" - {city_name}"
 
             lista_resumida.append({
                 "campeonato": jogo["league"]["name"],
@@ -436,11 +447,18 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
         "Jogue com responsabilidade 🔞"
     )
 
-    return mensagem_final
+    return message_final
 
 # =====================================================================
 # SEÇÃO 3: CONTROLE DE LIGAS, AGENDAMENTOS E CRONOGRAMAS
 # =====================================================================
+
+LIGAS_MONITORADAS = [71, 72, 73, 1, 39, 140, 2]
+JOGOS_DO_DIA_CACHE = []
+ULTIMA_CARGA_JOGOS = ""
+JOGOS_ANALISADOS = set()
+ALERTAS_ENVIADOS = set()
+ULTIMO_DIA_CRONOGRAMA = ""
 
 def adicionar_liga_monitorada(league_id: int) -> bool:
     global LIGAS_MONITORADAS
