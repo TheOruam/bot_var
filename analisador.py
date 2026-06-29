@@ -133,6 +133,9 @@ def obter_dados_recap_dia() -> List[Dict[str, Any]]:
                 dados_stats = fazer_requisicao_api(f"fixtures/statistics?fixture={fixture_id}")
                 stats_response = dados_stats.get("response", [])
                 
+                # [Ajuste de Segurança]: Pausa obrigatória de 3 segundos para nunca estourar o limite de 10 requisições/minuto!
+                time.sleep(3)
+                
                 for team_stat in stats_response:
                     equipe = "home" if team_stat["team"]["name"] == jogo["teams"]["home"]["name"] else "away"
                     for s in team_stat["statistics"]:
