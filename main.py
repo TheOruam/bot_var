@@ -289,6 +289,7 @@ def painel_time():
         id_fora = jogo["teams"]["away"]["id"]
         
         if id_casa == team_id or id_fora == team_id:
+            # Converte a hora UTC do jogo de hoje para o Horário de Brasília
             data_utc_str = jogo["fixture"]["date"]
             data_utc = datetime.fromisoformat(data_utc_str.replace("Z", "+00:00"))
             data_brt = data_utc - timedelta(hours=3)
@@ -384,6 +385,7 @@ registrar_comandos(bot)
 # ==========================================
 
 def tarefa_agendada_loop():
+    # Aguarda 30 segundos ao iniciar para estabilizar as conexões de rede
     time.sleep(30)
     while True:
         try:
@@ -391,7 +393,7 @@ def tarefa_agendada_loop():
             verificar_e_enviar_pre_jogos(bot)
         except Exception as e:
             print(f"Erro no loop do agendador automático: {e}")
-        time.sleep(600)
+        time.sleep(600)  # Aguarda 10 minutos para a próxima varredura
 
 def rodar_servidor_web():
     porta = int(os.getenv("PORT", 8080))
@@ -406,6 +408,7 @@ if __name__ == "__main__":
         print("Agendador automático iniciado com sucesso.")
 
         # 2. Inicia o Polling do Telegram em segundo plano (Thread)
+        # Isso evita que o polling pesado bloqueie o fluxo principal do Flask
         thread_bot = threading.Thread(target=lambda: bot.infinity_polling(), daemon=True)
         thread_bot.start()
         print("Escuta do Bot do Telegram iniciada em segundo plano.")
