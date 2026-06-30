@@ -342,11 +342,29 @@ def registrar_comandos(bot: TeleBot):
                 
                 texto_resumo = gerar_resumo_diario_ia(dados_recap)
                 
-                bot.send_message(
-                    chat_id=int(os.getenv("TELEGRAM_CHAT_ID")),
-                    text=texto_resumo,
-                    message_thread_id=ID_PRE_JOGO
-                )
+                # SISTEMA DE SEGURANÇA CONTRA MENSAGENS LONGAS (FATIADOR DE CARACTERE)
+                limite_telegram = 4000
+                chat_canal_id = int(os.getenv("TELEGRAM_CHAT_ID"))
+                
+                if len(texto_resumo) <= limite_telegram:
+                    # Envia normalmente caso caiba em 1 única mensagem
+                    bot.send_message(
+                        chat_id=chat_canal_id,
+                        text=texto_resumo,
+                        message_thread_id=ID_PRE_JOGO
+                    )
+                else:
+                    # Fatia o texto em blocos de até 3900 caracteres para evitar ultrapassar o limite [1]
+                    tamanho_fatia = 3900
+                    partes = [texto_resumo[i:i+tamanho_fatia] for i in range(0, len(texto_resumo), tamanho_fatia)]
+                    
+                    for idx, parte in enumerate(partes):
+                        bot.send_message(
+                            chat_id=chat_canal_id,
+                            text=f"📋 [Balanço Diário - Parte {idx+1}/{len(partes)}]\n\n{parte}",
+                            message_thread_id=ID_PRE_JOGO
+                        )
+                        time.sleep(1) # Pausa de segurança de 1 segundo entre as fatias
                 
                 bot.send_message(
                     chat_id=message.chat.id, 
