@@ -9,7 +9,6 @@ from google.genai import types
 from google.genai.errors import APIError
 from typing import Optional, Dict, Any, List
 
-# Configurações globais de endpoints
 API_FOOTBALL_URL_DIRECT = "https://v3.football.api-sports.io"
 API_FOOTBALL_URL_RAPID = "https://api-football-v1.p.rapidapi.com/v3"
 
@@ -18,7 +17,7 @@ LIGAS_MONITORADAS = [71, 72, 73, 1, 39, 140, 2]
 JOGOS_DO_DIA_CACHE = []
 ULTIMA_CARGA_JOGOS = ""
 JOGOS_ANALISADOS = set()
-ALERTAS_ENVIADOS = set()  # Guarda chaves de controle ex: "fixtureID_3h", "fixtureID_10m"
+ALERTAS_ENVIADOS = set()
 ULTIMO_DIA_CRONOGRAMA = ""
 
 def obter_cliente_gemini() -> genai.Client:
@@ -57,7 +56,7 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
     ultimo_erro = None
 
     for i, chave in enumerate(chaves):
-        # ─── TENTATIVA 1: PORTAL DIRETO (API-SPORTS/API-FOOTBALL) ───
+        # ─── TENTATIVA 1: PORTAL DIRETO (API-SPORTS) ───
         try:
             url_direto = f"{API_FOOTBALL_URL_DIRECT}/{endpoint}"
             headers_direto = {'x-apisports-key': chave}
@@ -106,16 +105,11 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
 # =====================================================================
 
 def obter_jogos_do_dia() -> List[Dict[str, Any]]:
-    """
-    Busca todas as partidas do dia. Implementa caching diário para economizar 
-    a cota de requisições de forma absoluta (reduz o consumo de 144 para 1 por dia).
-    """
     global JOGOS_DO_DIA_CACHE, ULTIMA_CARGA_JOGOS
     
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
     hoje_brt = agora_brt.strftime('%Y-%m-%d')
     
-    # Retorna o cache se a data de hoje já foi carregada
     if hoje_brt == ULTIMA_CARGA_JOGOS and JOGOS_DO_DIA_CACHE:
         return JOGOS_DO_DIA_CACHE
     
@@ -128,7 +122,6 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
         if jogo["league"]["id"] in LIGAS_MONITORADAS
     ]
     
-    # Atualiza o cache somente se a requisição retornou dados legítimos
     if todos_jogos:
         JOGOS_DO_DIA_CACHE = jogos_filtrados
         ULTIMA_CARGA_JOGOS = hoje_brt
@@ -137,7 +130,6 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     return jogos_filtrados
 
 def obter_dados_recap_dia() -> List[Dict[str, Any]]:
-    """Busca as partidas de hoje e extrai as estatísticas detalhadas de escanteios, cartões e faltas com delay anti-suspensão de cota."""
     jogos = obter_jogos_do_dia()
     resumos_com_stats = []
     
@@ -209,11 +201,6 @@ def obter_dados_recap_dia() -> List[Dict[str, Any]]:
     return resumos_com_stats
 
 def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
-    """
-    Envia a lista de partidas enriquecidas com estatísticas para o Gemini,
-    gerando um balanço diário que contém todas as estatísticas e auditorias 
-    consolidadas de forma ultra-resumida (máximo de 3 linhas por partida).
-    """
     try:
         client = obter_cliente_gemini()
         
