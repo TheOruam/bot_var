@@ -9,13 +9,14 @@ from google.genai import types
 from google.genai.errors import APIError
 from typing import Optional, Dict, Any, List
 
+# Configurações globais
 API_FOOTBALL_URL_DIRECT = "https://v3.football.api-sports.io"
 API_FOOTBALL_URL_RAPID = "https://api-football-v1.p.rapidapi.com/v3"
 
-# SISTEMA DE CACHE DIÁRIO E CONTROLE DE DISPAROS DE ALERTAS
+# SISTEMA DE CACHE BRUTO DIÁRIO (ECONOMIA DE COTA + FILTRO DINÂMICO IMEDIATO)
 LIGAS_MONITORADAS = [71, 72, 73, 1, 39, 140, 2]
-JOGOS_DO_DIA_CACHE = []
-ULTIMA_CARGA_JOGOS = ""
+JOGOS_DO_DIA_RAW_CACHE = []  # Guarda todos os jogos do mundo hoje sem filtro
+ULTIMA_CARGA_JOGOS = ""      # Guarda a data da última requisição real (ex: "2026-06-30")
 JOGOS_ANALISADOS = set()
 ALERTAS_ENVIADOS = set()
 ULTIMO_DIA_CRONOGRAMA = ""
@@ -64,7 +65,6 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
             resposta = requests.get(url_direto, headers=headers_direto, timeout=12)
             dados = resposta.json()
             
-            # Se a resposta contiver "response", a chave direta FUNCIONOU!
             if "response" in dados and not dados.get("errors"):
                 return dados
                 
@@ -86,7 +86,6 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
             resposta = requests.get(url_rapid, headers=headers_rapid, timeout=12)
             dados = resposta.json()
             
-            # Se a resposta contiver "response", a chave RapidAPI FUNCIONOU!
             if "response" in dados and not dados.get("errors"):
                 return dados
                 
@@ -105,28 +104,32 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
 # =====================================================================
 
 def obter_jogos_do_dia() -> List[Dict[str, Any]]:
-    global JOGOS_DO_DIA_CACHE, ULTIMA_CARGA_JOGOS
+    """
+    Busca todas as partidas do dia no planeta e aplica o filtro de ligas monitoradas
+    dinamicamente. Garante que atualizações de ligas pelo chat surtam efeito imediato.
+    """
+    global JOGOS_DO_DIA_RAW_CACHE, ULTIMA_CARGA_JOGOS
     
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
     hoje_brt = agora_brt.strftime('%Y-%m-%d')
     
-    if hoje_brt == ULTIMA_CARGA_JOGOS and JOGOS_DO_DIA_CACHE:
-        return JOGOS_DO_DIA_CACHE
-    
-    print(f"[Cache API] Realizando consulta real na API-Football para a data {hoje_brt}...")
-    dados = fazer_requisicao_api(f"fixtures?date={hoje_brt}")
-    todos_jogos = dados.get("response", [])
-    
+    # Se ainda não buscamos a lista de hoje, faz a chamada real à API (1 vez por dia)
+    if hoje_brt != ULTIMA_CARGA_JOGOS or not JOGOS_DO_DIA_RAW_CACHE:
+        print(f"[Cache API] Realizando consulta real na API-Football para a data {hoje_brt}...")
+        dados = fazer_requisicao_api(f"fixtures?date={hoje_brt}")
+        todos_jogos = dados.get("response", [])
+        
+        if todos_jogos:
+            JOGOS_DO_DIA_RAW_CACHE = todos_jogos
+            ULTIMA_CARGA_JOGOS = hoje_brt
+            
+    # Aplica o filtro de ligas monitoradas dinamicamente na lista bruta em cache
     jogos_filtrados = [
-        jogo for jogo in todos_jogos 
+        jogo for jogo in JOGOS_DO_DIA_RAW_CACHE 
         if jogo["league"]["id"] in LIGAS_MONITORADAS
     ]
     
-    if todos_jogos:
-        JOGOS_DO_DIA_CACHE = jogos_filtrados
-        ULTIMA_CARGA_JOGOS = hoje_brt
-        
-    print(f"Data BRT consultada: {hoje_brt} | Total jogos mundo: {len(todos_jogos)} | Filtrados em cache: {len(jogos_filtrados)}")
+    print(f"Data BRT: {hoje_brt} | Total jogos mundo em cache: {len(JOGOS_DO_DIA_RAW_CACHE)} | Filtrados ativos: {len(jogos_filtrados)}")
     return jogos_filtrados
 
 def obter_dados_recap_dia() -> List[Dict[str, Any]]:
@@ -243,16 +246,11 @@ def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
         return "Erro ao processar o fechamento de mercado detalhado."
 
 def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
-    """
-    Envia a lista bruta de partidas do dia para o Gemini formatar um cronograma
-    altamente estilizado de forma 100% segura contra falhas de estádios vazios (null/None) da API.
-    """
     try:
         client = obter_cliente_gemini()
         
         lista_resumida = []
         for jogo in jogos:
-            # Captura o estádio de forma totalmente segura e blindada contra "NoneType" da API
             venue_dict = jogo["fixture"].get("venue")
             venue_name = ""
             city_name = ""
@@ -296,10 +294,6 @@ def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
         return "Erro ao construir o cronograma diário de partidas."
 
 def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
-    """
-    Gera o dossiê avançado de análise estatística 'VAR do Lucro' 1 hora antes do início do jogo,
-    utilizando a nova modelagem de Gols Projetados (xG), Probabilidade Real (+EV) e o Critério de Kelly.
-    """
     try:
         client = obter_cliente_gemini()
         liga = fixture["league"]["name"]
@@ -318,7 +312,7 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
             "REGRAS RÍGIDAS DE FORMATAÇÃO E TRADUÇÃO:\n"
             "- NÃO use asteriscos (*) em nenhuma parte da resposta final (substitua por traços ou outros emojis para manter o visual limpo).\n"
             "- Traduza obrigatoriamente todos os nomes de times, países e ligas para o Português do Brasil no relatório final.\n"
-            "- Seja estritamente direto, objetivo e resumido, entregando as informações exatamente seguindo este modelo de resposta de alta fidelidade visual:\n\n"
+            "- Seja estritamente direto, objective e resumido, entregando as informações exatamente seguindo este modelo de resposta de alta fidelidade visual:\n\n"
             
             "🔍 RELATÓRIO MATEMÁTICO - VAR DO LUCRO\n"
             f"⚽ [Nome do Time Casa Traduzido] vs [Nome do Time Fora Traduzido]\n"
@@ -471,7 +465,7 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
 # =====================================================================
 
 LIGAS_MONITORADAS = [71, 72, 73, 1, 39, 140, 2]
-JOGOS_DO_DIA_CACHE = []
+JOGOS_DO_DIA_RAW_CACHE = []
 ULTIMA_CARGA_JOGOS = ""
 JOGOS_ANALISADOS = set()
 ALERTAS_ENVIADOS = set()
