@@ -9,8 +9,9 @@ from google.genai import types
 from google.genai.errors import APIError
 from typing import Optional, Dict, Any, List
 
-# Configurações globais
-API_FOOTBALL_URL = "https://v3.football.api-sports.io"
+# Configurações globais de endpoints
+API_FOOTBALL_URL_DIRECT = "https://v3.football.api-sports.io"
+API_FOOTBALL_URL_RAPID = "https://api-football-v1.p.rapidapi.com/v3"
 
 # SISTEMA DE CACHE DIÁRIO E CONTROLE DE DISPAROS DE ALERTAS
 LIGAS_MONITORADAS = [71, 72, 73, 1, 39, 140, 2]
@@ -38,10 +39,14 @@ def gerar_texto_ia_local(prompt: str) -> str:
         return "Foco na cabine do VAR! Mais uma partida emocionante se aproxima."
 
 # =====================================================================
-# SISTEMA DE REDUNDÂNCIA DE APIS (FALLBACK MULTI-CHAVE BLINDADO)
+# SISTEMA DE DUPLO PORTAL COM REDUNDÂNCIA (FALLBACK MULTI-CHAVE BLINDADO)
 # =====================================================================
 
 def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
+    """
+    Realiza requisições para a API-Football utilizando um sistema inteligente de duplo portal.
+    Tenta o portal direto (API-Sports) e o portal RapidAPI para cada chave configurada.
+    """
     raw_keys = os.getenv("API_FOOTBALL_KEY", "")
     chaves = [k.strip() for k in raw_keys.split(",") if k.strip()]
     
@@ -50,31 +55,50 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
         return {"response": [], "errors": "Chave não configurada"}
 
     ultimo_erro = None
-    headers = {'x-rapidapi-host': 'v3.football.api-sports.io'}
 
     for i, chave in enumerate(chaves):
-        headers['x-rapidapi-key'] = chave
+        # ─── TENTATIVA 1: PORTAL DIRETO (API-SPORTS/API-FOOTBALL) ───
         try:
-            url = f"{API_FOOTBALL_URL}/{endpoint}"
-            resposta = requests.get(url, headers=headers, timeout=12)
+            url_direto = f"{API_FOOTBALL_URL_DIRECT}/{endpoint}"
+            headers_direto = {'x-apisports-key': chave}
+            
+            resposta = requests.get(url_direto, headers=headers_direto, timeout=12)
             dados = resposta.json()
             
-            # REGRA BLINDADA: Se não houver a chave "response" OU se houver "errors" ativo, a chave FALHOU
-            is_erro = "response" not in dados or dados.get("errors")
-            
-            if is_erro:
-                erro_detalhado = dados.get("errors") if dados.get("errors") else dados
-                print(f"⚠️ [Fallback API] Chave {i+1} falhou. Motivo: {erro_detalhado}. Tentando chave reserva...")
-                ultimo_erro = erro_detalhado
-                continue
+            # Se a resposta contiver "response", a chave direta FUNCIONOU!
+            if "response" in dados and not dados.get("errors"):
+                return dados
                 
-            return dados
+            ultimo_erro = dados.get("errors") if dados.get("errors") else dados
+            print(f"ℹ️ [Fallback API] Chave {i+1} falhou no portal direto. Tentando pelo portal RapidAPI...")
             
         except Exception as e:
-            print(f"⚠️ [Fallback API] Erro de rede com a chave {i+1}: {e}. Pulando para a próxima...")
+            print(f"⚠️ [Fallback API] Erro físico com chave {i+1} no portal direto: {e}. Tentando RapidAPI...")
+            ultimo_erro = str(e)
+
+        # ─── TENTATIVA 2: PORTAL SECUNDÁRIO (RAPIDAPI) ───
+        try:
+            url_rapid = f"{API_FOOTBALL_URL_RAPID}/{endpoint}"
+            headers_rapid = {
+                'x-rapidapi-host': 'api-football-v1.p.rapidapi.com',
+                'x-rapidapi-key': chave
+            }
+            
+            resposta = requests.get(url_rapid, headers=headers_rapid, timeout=12)
+            dados = resposta.json()
+            
+            # Se a resposta contiver "response", a chave RapidAPI FUNCIONOU!
+            if "response" in dados and not dados.get("errors"):
+                return dados
+                
+            ultimo_erro = dados.get("errors") if dados.get("errors") else dados
+            print(f"⚠️ [Fallback API] Chave {i+1} também falhou no portal RapidAPI. Motivo: {ultimo_erro}")
+            
+        except Exception as e:
+            print(f"⚠️ [Fallback API] Erro físico com chave {i+1} no portal RapidAPI: {e}")
             ultimo_erro = str(e)
             
-    print("❌ [Fallback API] Alerta Crítico: Todas as chaves de API fornecidas falharam.")
+    print("❌ [Fallback API] Alerta Crítico: Todas as chaves de API e portais falharam.")
     return {"response": [], "errors": ultimo_erro}
 
 # =====================================================================
@@ -82,11 +106,16 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
 # =====================================================================
 
 def obter_jogos_do_dia() -> List[Dict[str, Any]]:
+    """
+    Busca todas as partidas do dia. Implementa caching diário para economizar 
+    a cota de requisições de forma absoluta (reduz o consumo de 144 para 1 por dia).
+    """
     global JOGOS_DO_DIA_CACHE, ULTIMA_CARGA_JOGOS
     
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
     hoje_brt = agora_brt.strftime('%Y-%m-%d')
     
+    # Retorna o cache se a data de hoje já foi carregada
     if hoje_brt == ULTIMA_CARGA_JOGOS and JOGOS_DO_DIA_CACHE:
         return JOGOS_DO_DIA_CACHE
     
@@ -99,6 +128,7 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
         if jogo["league"]["id"] in LIGAS_MONITORADAS
     ]
     
+    # Atualiza o cache somente se a requisição retornou dados legítimos
     if todos_jogos:
         JOGOS_DO_DIA_CACHE = jogos_filtrados
         ULTIMA_CARGA_JOGOS = hoje_brt
@@ -290,7 +320,7 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
         time_fora = fixture["teams"]["away"]["name"]
         
         prompt = (
-            f"Você é a IA analista-chefe da cabine do 'VAR do Lucro', especialista em Engenharia de Prompt e Modelagem Estatística Avançada para apostas esportivas de Valor Esperado (+EV).\n"
+            f"Você é a IA analista-chefe da cabine do 'VAR do Lucro', especialista em Engenharia de Prompt e Modelagem Estatística Avançada para apostas esportivas de valor (+EV).\n"
             f"Sua missão é realizar uma análise estatística pré-jogo em tempo real (exatamente 1 hora antes do início, considerando desfalques e escalações confirmadas de última hora de hoje) para o confronto: {time_casa} vs {time_fora} pela liga '{liga}'.\n\n"
             
             "REGRAS DE ANÁLISE MATEMÁTICA (Use a pesquisa do Google em tempo real para obter dados de odds atuais, xG recente das equipes, árbitro escalado e desfalques):\n"
@@ -447,7 +477,7 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
         "Jogue com responsabilidade 🔞"
     )
 
-    return message_final
+    return mensagem_final
 
 # =====================================================================
 # SEÇÃO 3: CONTROLE DE LIGAS, AGENDAMENTOS E CRONOGRAMAS
