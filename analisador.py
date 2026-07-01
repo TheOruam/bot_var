@@ -119,7 +119,6 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
     hoje_brt = agora_brt.strftime('%Y-%m-%d')
     
-    # Se já temos os jogos do dia carregados e consolidados em cache, retorna diretamente
     if hoje_brt == ULTIMA_CARGA_JOGOS and JOGOS_DO_DIA_RAW_CACHE:
         jogos_filtrados = [
             jogo for jogo in todos_jogos 
@@ -211,7 +210,6 @@ def forcar_atualizacao_cache() -> str:
     )
 
 def obter_dados_recap_dia() -> List[Dict[str, Any]]:
-    """Busca as partidas de hoje e extrai as estatísticas detalhadas de escanteios, cartões e faltas com delay anti-suspensão de cota."""
     jogos = obter_jogos_do_dia()
     resumos_com_stats = []
     
@@ -333,6 +331,7 @@ def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
         
         lista_resumida = []
         for jogo in jogos:
+            # Captura o estádio de forma totalmente segura e blindada contra "NoneType" da API
             venue_dict = jogo["fixture"].get("venue")
             venue_name = ""
             city_name = ""
@@ -402,17 +401,20 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
             f"Você é a IA analista-chefe da cabine do 'VAR do Lucro', especialista em Engenharia de Prompt e Modelagem Estatística Avançada para apostas esportivas de valor (+EV).\n"
             f"Sua missão é realizar uma análise estatística pré-jogo em tempo real (exatamente 1 hora antes do início de hoje) para o confronto: {time_casa} vs {time_fora} pela liga '{liga}'.\n\n"
             
+            "LIMITES RÍGIDOS DE TAMANHO (MUITO IMPORTANTE):\n"
+            "Mantenha a resposta final total extremamente compacta, abaixo de 2800 caracteres no total. Escreva de forma enxuta, direta ao ponto e evite textos explicativos longos ou introduções vazias.\n\n"
+            
             "REGRAS DE ANÁLISE TÁTICA E INVESTIGAÇÃO (Use a pesquisa do Google em tempo real para obter os dados de hoje):\n"
             "1. ARBITRAGEM COMPLETA: Pesquise quem é o juiz principal e os assistentes (bandeirinhas). Cruze o comportamento agressivo (média de faltas e cartões das equipes) com o rigor do árbitro escalado.\n"
-            "2. TEMPERATURA E CLIMA: Verifique as condições climáticas e temperatura no estádio. Explique resumidamente como isso influencia no ritmo de jogo (campo molhado/pesado, altitude, cansaço, etc.).\n"
-            "3. PSICOLÓGICO E CLIMA INTERNO: Pesquise sobre a motivação atual das equipes, notícias de vestiário, pressão interna de torcedores, desfalques ou retorno de astros importantes.\n"
-            "4. CÁLCULO DE PROBABILIDADE E +EV: Converta as odds médias reais atuais das casas para probabilidade implícita (Probabilidade = 1 / odd). Calcule a sua própria probabilidade real com base no xG recente para encontrar a aposta de maior valor esperado positivo (+EV).\n"
+            "2. TEMPERATURA E CLIMA: Verifique as condições climáticas e temperatura no estádio. Explique resumidamente como isso influencia no ritmo de jogo (campo pesado, altitude, cansaço, etc.).\n"
+            "3. PSICOLÓGICO E CLIMA INTERNO: Pesquise sobre a motivação atual das equipes, notícias de vestiário, desfalques ou retorno de astros importantes de última hora.\n"
+            "4. CÁLCULO DE PROBABILIDADE E +EV: Converta as odds médias reais atuais das casas para probabilidade implícita (Probabilidade = 1 / odd). Calcule a sua própria probabilidade real para encontrar a aposta de maior valor esperado positivo (+EV).\n"
             "5. CRIAR APOSTA (ESTILO BET365): Crie uma seção especial sugerindo uma aposta combinada personalizada de micro-mercados que os apostadores possam preencher usando a ferramenta 'Criar Aposta' da Bet365, com base nos jogadores titulares prováveis e tendências da partida.\n\n"
             
             "REGRAS RÍGIDAS DE FORMATAÇÃO E TRADUÇÃO:\n"
             "- NÃO use asteriscos (*) em nenhuma parte da resposta final (substitua por traços ou emojis para manter o visual limpo).\n"
             "- Traduza obrigatoriamente todos os nomes de times, países e ligas para o Português do Brasil no relatório final.\n"
-            "- Seja estritamente direto e resumido, entregando as informações exatamente seguindo este modelo de resposta:\n\n"
+            "- Seja estritamente direto, objetivo e resumido, entregando as informações exatamente seguindo este modelo de resposta de alta fidelidade visual:\n\n"
             
             "🔍 RELATÓRIO MATEMÁTICO - VAR DO LUCRO\n"
             f"⚽ [Nome do Time Casa Traduzido] vs [Nome do Time Fora Traduzido]\n"
@@ -422,8 +424,8 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
             "- Gols (Over/Under e BTTS): [Linha sugerida] (Projeção xG: [X] gols | Probabilidade VAR: [X]% | Odd da casa: [X])\n\n"
             "- Escanteios: [Linha sugerida] (Média combinada: [X] cantos | Justificativa curta baseada em volume de ataque)\n\n"
             "- Cartões / Faltas: [Linha sugerida de cartões] (Média de faltas projetada: [X] | Equipe de arbitragem: Árbitro principal [Nome] com média de [X] cartões, bandeirinhas [Nomes] | Justificativa curta de comportamento)\n\n"
-            "- Clima, Temperatura e Torcida: [Análise curta de como a temperatura/campo pesado e a pressão do público no estádio influenciarão no andamento da partida]\n\n"
-            "- Psicológico e Vestiário: [Análise rápida do clima de vestiário, união das equipes e motivação de última hora]\n\n"
+            "- Clima, Temperatura e Torcida: [Análise de 1 linha de como a temperatura/campo e a pressão do público no estádio influenciarão no andamento da partida]\n\n"
+            "- Psicológico e Vestiário: [Análise de 1 linha do clima de vestiário, união das equipes e motivação de última hora]\n\n"
             "- Aposta de Maior Valor (+EV): [Mercado específico desajustado]\n"
             "  • Odd da casa: [X] (Probabilidade implícita: [X]%)\n"
             "  • Probabilidade real calculada pelo VAR: [X]%\n"
@@ -714,10 +716,24 @@ def verificar_e_enviar_pre_jogos(bot) -> int:
             if fixture_id not in JOGOS_ANALISADOS:
                 try:
                     relatorio = gerar_relatorio_pre_jogo(jogo)
-                    bot.send_message(chat_id=chat_id, text=relatorio, message_thread_id=int(topico_pre_jogo))
+                    
+                    # Fatiador de Segurança Automático contra erros de caracteres longos do Telegram [1]
+                    limite_telegram = 4000
+                    if len(relatorio) <= limite_telegram:
+                        bot.send_message(chat_id=chat_id, text=relatorio, message_thread_id=int(topico_pre_jogo))
+                    else:
+                        tamanho_fatia = 3900
+                        partes = [relatorio[i:i+tamanho_fatia] for i in range(0, len(relatorio), tamanho_fatia)]
+                        for idx, parte in enumerate(partes):
+                            bot.send_message(
+                                chat_id=chat_id,
+                                text=f"📋 [Análise - Parte {idx+1}/{len(partes)}]\n\n{parte}",
+                                message_thread_id=int(topico_pre_jogo)
+                            )
+                            time.sleep(1)
+                            
                     JOGOS_ANALISADOS.add(fixture_id)
                     enviados += 1
-                    time.sleep(2)
                 except Exception as e:
                     print(f"Falha ao enviar relatório pré-jogo: {e}")
 
