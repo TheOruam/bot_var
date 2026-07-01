@@ -389,8 +389,7 @@ def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
 def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
     """
     Gera o dossiê avançado de análise estatística 'VAR do Lucro' com as estatísticas 
-    principais e o novo painel dinâmico 'Criar Aposta (Bet365)' sem usar asteriscos.
-    Realiza investigações em tempo real sobre elenco provável, clima tático e arbitragem.
+    principais, comparador de odds inteligente em tempo real e o Criar Aposta (Bet365).
     """
     try:
         client = obter_cliente_gemini()
@@ -398,6 +397,12 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
         time_casa = fixture["teams"]["home"]["name"]
         time_fora = fixture["teams"]["away"]["name"]
         
+        # Converte e formata a data da partida para exibir de forma exata e Brasília no cabeçalho
+        data_utc_str = fixture["fixture"]["date"]
+        data_utc = datetime.fromisoformat(data_utc_str.replace("Z", "+00:00"))
+        data_brt = data_utc - timedelta(hours=3)
+        data_jogo_formatada = f"{data_brt.day:02d}/{data_brt.month:02d}/{data_brt.year}"
+
         prompt = (
             f"Você é a IA analista-chefe da cabine do 'VAR do Lucro', especialista em Engenharia de Prompt e Modelagem Estatística Avançada para apostas esportivas de valor (+EV).\n"
             f"Sua missão é realizar uma análise estatística pré-jogo em tempo real (exatamente 1 hora antes do início de hoje) para o confronto: {time_casa} vs {time_fora} pela liga '{liga}'.\n\n"
@@ -410,7 +415,8 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
             "2. TEMPERATURA E CLIMA: Verifique as condições climáticas e temperatura no estádio. Explique resumidamente como isso influencia no ritmo de jogo (campo pesado, altitude, cansaço, etc.).\n"
             "3. PSICOLÓGICO E CLIMA INTERNO: Pesquise sobre a motivação atual das equipes, notícias de vestiário, desfalques ou retorno de astros importantes de última hora.\n"
             "4. CÁLCULO DE PROBABILIDADE E +EV: Converta as odds médias reais atuais das casas para probabilidade implícita (Probabilidade = 1 / odd). Calcule a sua própria probabilidade real para encontrar a aposta de maior valor esperado positivo (+EV).\n"
-            "5. CRIAR APOSTA (ESTILO BET365): Crie uma seção especial sugerindo uma aposta combinada personalizada de micro-mercados que os apostadores possam preencher usando a ferramenta 'Criar Aposta' da Bet365, com base nos jogadores titulares prováveis e tendências da partida.\n\n"
+            "5. COMPARATIVO DE ODDS (ONDE ESTÁ PAGANDO MAIS): Faça uma pesquisa veloz do valor da odd para este mercado de valor (+EV) nas maiores casas do Brasil (como Superbet, Bet365, EstrelaBet, etc.) e aponte em qual delas a cotação está pagando mais no momento.\n"
+            "6. CRIAR APOSTA (ESTILO BET365): Crie uma seção especial sugerindo uma aposta combinada personalizada de micro-mercados que os apostadores possam preencher usando a ferramenta 'Criar Aposta' da Bet365, com base nos jogadores titulares prováveis e tendências da partida.\n\n"
             
             "REGRAS RÍGIDAS DE FORMATAÇÃO E TRADUÇÃO:\n"
             "- NÃO use asteriscos (*) em nenhuma parte da resposta final (substitua por traços ou emojis para manter o visual limpo).\n"
@@ -419,7 +425,7 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
             
             "🔍 RELATÓRIO MATEMÁTICO - VAR DO LUCRO\n"
             f"⚽ [Nome do Time Casa Traduzido] vs [Nome do Time Fora Traduzido]\n"
-            f"🏆 [Nome da Liga Traduzido] (28/06/2026)\n\n"
+            f"🏆 [Nome da Liga Traduzido] ({data_jogo_formatada})\n\n"
             
             "- Resultado (1X2 ou Handicap): [Mercado sugerido] (Probabilidade VAR: [X]% | Odd da casa: [X] | Implicada: [X]%)\n\n"
             "- Gols (Over/Under e BTTS): [Linha sugerida] (Projeção xG: [X] gols | Probabilidade VAR: [X]% | Odd da casa: [X])\n\n"
@@ -432,6 +438,8 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
             "  • Probabilidade real calculada pelo VAR: [X]%\n"
             "  • Valor Esperado (+EV): [X]%\n"
             "  • Critério de Kelly Recomendado: [X]% da banca (Sugerir stake fracionária segura de 1% a 3%)\n\n"
+            "📈 COMPARATIVO DE ODDS (ONDE ESTÁ PAGANDO MAIS):\n"
+            "• [Indique qual casa de apostas (ex: Superbet, Bet365, etc.) está pagando a maior cotação/odd para esta aposta de maior valor no momento e mostre os valores comparativos das odds]\n\n"
             "🛠️ CRIAR APOSTA SUGERIDO (ESTILO BET365):\n"
             "• Escanteios: [Time Casa] mais de [X] cantos (Odd: [X]) | [Time Fora] mais de [X] cantos (Odd: [X])\n"
             "• Chutes ao Gol (Jogador): [Nome de um jogador específico provável] com mais de 0.5 chutes no alvo (Odd: [X])\n"
@@ -552,9 +560,7 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
         f"⚽ {time_casa} v {time_fora}\n"
         f"🕐 {tempo_minutos} minutos\n"
         f"🔢 Placar do jogo: {gols_casa} - {gols_fora}\n\n"
-        
         "📊 Dados do jogo (Mandante - Visitante):\n\n"
-        
         f"⚡ Investidas ofensivas: {stats_parsed['home']['attacks']} - {stats_parsed['away']['attacks']}\n"
         f"{barra_ataques}\n\n"
         
@@ -571,9 +577,8 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
         f"{barra_posse}\n\n"
         
         f"🔥 Sinal: {sinal}\n\n"
-        
-        "↪ Confira nas casas:\n"
-        f"🎲 Pegue na [{casa_sugerida_1}]({link_1})\n\n"
+        "↪ Confira nas casas:\\n"
+        f"🎲 Pegue na [{casa_sugerida_1}]({link_1})\\n\\n"
         "Jogue com responsabilidade 🔞"
     )
 
