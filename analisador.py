@@ -9,6 +9,7 @@ from google.genai import types
 from google.genai.errors import APIError
 from typing import Optional, Dict, Any, List
 
+# Configurações globais
 API_FOOTBALL_URL_DIRECT = "https://v3.football.api-sports.io"
 API_FOOTBALL_URL_RAPID = "https://api-football-v1.p.rapidapi.com/v3"
 
@@ -19,6 +20,12 @@ ULTIMA_CARGA_JOGOS = ""      # Guarda a data da última requisição real (ex: "
 JOGOS_ANALISADOS = set()
 ALERTAS_ENVIADOS = set()
 ULTIMO_DIA_CRONOGRAMA = ""
+
+# Dicionário de meses em Português livre de locais de sistema do servidor
+MESES_PT = {
+    1: "JAN", 2: "FEV", 3: "MAR", 4: "ABR", 5: "MAI", 6: "JUN",
+    7: "JUL", 8: "AGO", 9: "SET", 10: "OUT", 11: "NOV", 12: "DEZ"
+}
 
 def obter_cliente_gemini() -> genai.Client:
     """Inicializa de forma segura o cliente da API do Google GenAI."""
@@ -42,10 +49,6 @@ def gerar_texto_ia_local(prompt: str) -> str:
 # =====================================================================
 
 def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
-    """
-    Realiza requisições para a API-Football utilizando um sistema inteligente de duplo portal.
-    Tenta o portal direto (API-Sports) e o portal RapidAPI para cada chave configurada.
-    """
     raw_keys = os.getenv("API_FOOTBALL_KEY", "")
     chaves = [k.strip() for k in raw_keys.split(",") if k.strip()]
     
@@ -103,10 +106,6 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
 # =====================================================================
 
 def obter_jogos_do_dia() -> List[Dict[str, Any]]:
-    """
-    Busca as partidas de hoje e amanhã no planeta e filtra localmente baseado no 
-    Horário de Brasília (UTC-3), corrigindo o 'Bug da Meia-noite' de jogos tardios.
-    """
     global JOGOS_DO_DIA_RAW_CACHE, ULTIMA_CARGA_JOGOS
     
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
@@ -135,7 +134,6 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     jogos_consolidados_hoje = []
     for jogo in todos_jogos_crus:
         data_utc_str = jogo["fixture"]["date"]
-        # Trata formatos com Z ou offset nulo
         data_utc = datetime.fromisoformat(data_utc_str.replace("Z", "+00:00"))
         
         # Converte a hora de início do jogo para Brasília
@@ -160,10 +158,6 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     return jogos_filtrados
 
 def forcar_atualizacao_cache() -> str:
-    """
-    Função de uso exclusivo do Dono. Força uma consulta real na API-Football,
-    ignorando o cache existente, e reconstrói o banco de dados local bruto.
-    """
     global JOGOS_DO_DIA_RAW_CACHE, ULTIMA_CARGA_JOGOS
     
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
@@ -276,52 +270,41 @@ def obter_dados_recap_dia() -> List[Dict[str, Any]]:
 def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
     try:
         client = obter_cliente_gemini()
-        
         prompt = (
             "Você é o analista-chefe da cabine do 'VAR do Lucro'. Escreva um balanço diário de fechamento de mercado "
-            "altamente profissional, técnico e ultra-resumido para a nossa comunidade de investimentos esportivos.\n\n"
-            
-            "INSTRUÇÃO DE CONTEÚDO COMPACTO (MUITO IMPORTANTE):\n"
-            "Você deve incluir todas as informações estatísticas e de auditoria de Greens/Reds de cada partida concluída, "
-            "mas de forma extremamente sintetizada e curta para ocupar o menor espaço vertical possível no celular.\n"
-            "Use rigorosamente esta estrutura enxuta de 3 linhas por partida para consolidar tudo:\n\n"
-            "⚽ [Time Casa Traduzido] [Gols Casa] - [Gols Fora] [Time Fora Traduzido]\n"
-            "📐 Cantos: [Casa]v[Fora] | 🟨 Cartões: [Casa]v[Fora] | ⚡ Faltas: [Casa]v[Fora]\n"
-            "🟢 Over 2.5 Gols: [GREEN ou RED] | Ambas Marcam: [GREEN ou RED] | Over 9.5 Cantos: [GREEN ou RED] | Over 4.5 Cartões: [GREEN ou RED]\n"
-            "──────────────────────\n\n"
-            
-            "INSTRUÇÕES DE AUDITORIA:\n"
-            "Com base nos dados reais fornecidos abaixo, classifique cada um dos 4 mercados acima de forma exata:\n"
-            "- Over 2.5 Gols -> GREEN 🟢 se a soma de gols for maior que 2.5 (caso contrário RED 🔴)\n"
-            "- Ambas Marcam -> GREEN 🟢 se ambos os times marcaram gols (caso contrário RED 🔴)\n"
-            "- Over 9.5 Cantos -> GREEN 🟢 se a soma de escanteios for maior ou igual a 10 (caso contrário RED 🔴)\n"
-            "- Over 4.5 Cartões -> GREEN 🟢 se a soma de cartões amarelos for maior ou igual a 5 (caso contrário RED 🔴)\n\n"
-            
+            "altamente profissional, detalhado e técnico para a nossa comunidade de investimentos esportivos.\n\n"
+            "INSTRUÇÕES DE AUDITORIA E VERIFICAÇÃO (MUITO IMPORTANTE):\n"
+            "Com base nos resultados e dados das partidas fornecidos abaixo, monte para cada jogo finalizado um painel de "
+            "verificação mostrando quais dos mercados padrão seriam classificados como GREEN 🟢 ou RED 🔴.\n"
+            "Exemplos de auditoria que você deve fazer:\n"
+            "- Se a soma de gols da partida for maior que 2.5: Over 2.5 Gols -> GREEN 🟢 (caso contrário: RED 🔴)\n"
+            "- Se ambos os times marcaram gols (placar ex: 2-1, 1-1): Ambas Marcam Sim -> GREEN 🟢 (caso contrário: RED 🔴)\n"
+            "- Se a soma dos escanteios for maior ou igual a 10: Over 9.5 Escanteios -> GREEN 🟢 (caso contrário: RED 🔴)\n"
+            "- Se a soma de cartões amarelos for maior ou igual a 5: Over 4.5 Cartões -> GREEN 🟢 (caso contrário: RED 🔴)\n\n"
             "INSTRUÇÕES DE FORMATAÇÃO E TRADUÇÃO:\n"
-            "1. Agrupe as partidas por campeonato escrevendo o nome do campeonato acima de cada bloco de jogos.\n"
+            "1. Agrupe as partidas por campeonato, listando o placar e as estatísticas de cada time (Gols, Escanteios, Cartões, Faltas).\n"
             "2. Traduza os nomes de todos os times, países e ligas para o Português do Brasil.\n"
-            "3. Escreva um parágrafo curtíssimo de fechamento e motivação no final (máximo 2 linhas).\n"
+            "3. Escreva uma análise curta no final destacando como foi o rendimento estatístico de hoje de forma geral.\n"
             "4. NÃO use asteriscos (*) em nenhuma parte da mensagem.\n"
             "5. Use emojis moderados e quebras de linha elegantes para organizar as seções de forma que seja agradável.\n\n"
             f"Dados consolidados das partidas de hoje:\n{dados_recap}"
         )
-        
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         return response.text
     except Exception as e:
         print(f"Erro ao gerar resumo diário avançado via IA: {e}")
         return "Erro ao processar o fechamento de mercado detalhado."
 
 def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
+    """
+    Envia a lista de partidas do dia com datas e horas já pré-calculadas em fuso BRT 
+    pelo servidor Python. Elimina 100% de erros de cálculo ou fuso do Gemini!
+    """
     try:
         client = obter_cliente_gemini()
         
         lista_resumida = []
         for jogo in jogos:
-            # Captura o estádio de forma totalmente segura e blindada contra "NoneType" da API
             venue_dict = jogo["fixture"].get("venue")
             venue_name = ""
             city_name = ""
@@ -333,11 +316,21 @@ def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
             if city_name and estadio_completo:
                 estadio_completo += f" - {city_name}"
 
+            # Realiza o cálculo exato do fuso horário em Python antes de mandar para a IA
+            data_utc_str = jogo["fixture"]["date"]
+            data_utc = datetime.fromisoformat(data_utc_str.replace("Z", "+00:00"))
+            data_brt = data_utc - timedelta(hours=3)
+            
+            # Formata o dia (ex: "30 JUN") de forma imune aos locales do servidor
+            dia_brt_formatado = f"{data_brt.day} {MESES_PT[data_brt.month]}"
+            hora_brt_formatada = data_brt.strftime('%H:%M')
+
             lista_resumida.append({
                 "campeonato": jogo["league"]["name"],
                 "casa": jogo["teams"]["home"]["name"],
                 "fora": jogo["teams"]["away"]["name"],
-                "hora_utc": jogo["fixture"]["date"],
+                "dia_brt": dia_brt_formatado,   # Já convertido para Brasília!
+                "hora_brt": hora_brt_formatada, # Já convertido para Brasília!
                 "estadio": estadio_completo
             })
 
@@ -345,18 +338,19 @@ def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
             "Você é o 'VAR do Lucro'. Organize a lista de partidas de futebol abaixo em um cronograma diário super elegante.\n\n"
             "INSTRUÇÃO DE ESTILO E CARTÕES (MUITO IMPORTANTE):\n"
             "Você deve imitar o visual de cartões individuais para cada partida usando linhas divisórias horizontais exatas.\n"
-            "Cada partida deve ser escrita exatamente neste formato estruturado de 4 linhas, sem tabelas horizontais ou desalinhamentos:\n\n"
+            "Cada partida deve ser escrita exatamente neste formato estruturado de 4 linhas, sem tabelas horizontais ou desalinhamentos.\n"
+            "Use LITERALMENTE as chaves 'dia_brt' e 'hora_brt' já fornecidas na lista de jogos abaixo. Não altere os horários de forma alguma:\n\n"
             "──────────────────────\n"
-            "🗓️ [DIA] [MÊS EM MAIÚSCULO (ex: JUN)], [HORA CONVERTIDA PARA O HORÁRIO DE BRASÍLIA UTC-3]\n"
+            "🗓️ [dia_brt], [hora_brt] (BRT)\n"
             "⚽ [Nome do Time Casa Traduzido] - [Nome do Time Fora Traduzido]\n"
-            "🏟️ [Estádio e Cidade Traduzidos (se fornecido, ex: Estádio de Boston / Filadélfia. Se não houver, ignore esta linha)]\n"
+            "🏟️ [Estádio e Cidade Traduzidos (se fornecido. Se não houver, ignore esta linha)]\n"
             "──────────────────────\n\n"
             "REGRAS DE CONVERSÃO E TRADUÇÃO:\n"
             "1. Agrupe as partidas por Campeonato/Liga escrevendo o título do campeonato acima do bloco de jogos.\n"
             "2. Traduza os nomes de times, países e ligas para o Português do Brasil.\n"
             "3. NÃO use asteriscos (*) em hipótese alguma na resposta final.\n"
-            "4. Adicione emojis esportivos ou as bandeirinhas dos países (ex: 🇧🇷, 🏴󠁧󠁢󠁳󠁣󠁴󠁿) se forem seleções.\n\n"
-            f"Lista de jogos do dia:\n{lista_resumida}"
+            "4. Adicione emojis esportivos ou as bandeirinhas dos países (ex: 🇧🇷, 🇲🇦) se forem seleções.\n\n"
+            f"Lista de jogos do dia já calculados em Brasília:\n{lista_resumida}"
         )
         response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         return response.text
@@ -534,6 +528,13 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
 # =====================================================================
 # SEÇÃO 3: CONTROLE DE LIGAS, AGENDAMENTOS E CRONOGRAMAS
 # =====================================================================
+
+LIGAS_MONITORADAS = [71, 72, 73, 1, 39, 140, 2]
+JOGOS_DO_DIA_RAW_CACHE = []
+ULTIMA_CARGA_JOGOS = ""
+JOGOS_ANALISADOS = set()
+ALERTAS_ENVIADOS = set()
+ULTIMO_DIA_CRONOGRAMA = ""
 
 def adicionar_liga_monitorada(league_id: int) -> bool:
     global LIGAS_MONITORADAS
