@@ -49,6 +49,10 @@ def gerar_texto_ia_local(prompt: str) -> str:
 # =====================================================================
 
 def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
+    """
+    Realiza requisições para a API-Football utilizando um sistema inteligente de duplo portal.
+    Tenta o portal direto (API-Sports) e o portal RapidAPI para cada chave configurada.
+    """
     raw_keys = os.getenv("API_FOOTBALL_KEY", "")
     chaves = [k.strip() for k in raw_keys.split(",") if k.strip()]
     
@@ -106,6 +110,10 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
 # =====================================================================
 
 def obter_jogos_do_dia() -> List[Dict[str, Any]]:
+    """
+    Busca as partidas de hoje e amanhã no planeta e filtra localmente baseado no 
+    Horário de Brasília (UTC-3), corrigindo o 'Bug da Meia-noite' de jogos tardios.
+    """
     global JOGOS_DO_DIA_RAW_CACHE, ULTIMA_CARGA_JOGOS
     
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
@@ -114,9 +122,9 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     # Se já temos os jogos do dia carregados e consolidados em cache, retorna diretamente
     if hoje_brt == ULTIMA_CARGA_JOGOS and JOGOS_DO_DIA_RAW_CACHE:
         jogos_filtrados = [
-            jogo for jogo in JOGOS_DO_DIA_RAW_CACHE 
+            jogo for jogo in todos_jogos 
             if jogo["league"]["id"] in LIGAS_MONITORADAS
-        ]
+        ] if (todos_jogos := JOGOS_DO_DIA_RAW_CACHE) else []
         return jogos_filtrados
     
     print(f"[Cache API] Novo dia detectado. Consultando dados de hoje ({hoje_brt}) e de amanhã...")
@@ -134,6 +142,7 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     jogos_consolidados_hoje = []
     for jogo in todos_jogos_crus:
         data_utc_str = jogo["fixture"]["date"]
+        # Trata formatos com Z ou offset nulo
         data_utc = datetime.fromisoformat(data_utc_str.replace("Z", "+00:00"))
         
         # Converte a hora de início do jogo para Brasília
@@ -158,6 +167,10 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     return jogos_filtrados
 
 def forcar_atualizacao_cache() -> str:
+    """
+    Função de uso exclusivo do Dono. Força uma consulta real na API-Football,
+    ignorando o cache existente, e reconstrói o banco de dados local bruto.
+    """
     global JOGOS_DO_DIA_RAW_CACHE, ULTIMA_CARGA_JOGOS
     
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
@@ -198,6 +211,7 @@ def forcar_atualizacao_cache() -> str:
     )
 
 def obter_dados_recap_dia() -> List[Dict[str, Any]]:
+    """Busca as partidas de hoje e extrai as estatísticas detalhadas de escanteios, cartões e faltas com delay anti-suspensão de cota."""
     jogos = obter_jogos_do_dia()
     resumos_com_stats = []
     
@@ -224,6 +238,7 @@ def obter_dados_recap_dia() -> List[Dict[str, Any]]:
                 dados_stats = fazer_requisicao_api(f"fixtures/statistics?fixture={fixture_id}")
                 stats_response = dados_stats.get("response", [])
                 
+                # [Anti-Abuso de Cota] Pausa de 3 segundos para evitar banimento por excesso de requisições por minuto (10 RPM)
                 time.sleep(3)
                 
                 for team_stat in stats_response:
@@ -272,24 +287,37 @@ def gerar_resumo_diario_ia(dados_recap: List[Dict[str, Any]]) -> str:
         client = obter_cliente_gemini()
         prompt = (
             "Você é o analista-chefe da cabine do 'VAR do Lucro'. Escreva um balanço diário de fechamento de mercado "
-            "altamente profissional, detalhado e técnico para a nossa comunidade de investimentos esportivos.\n\n"
-            "INSTRUÇÕES DE AUDITORIA E VERIFICAÇÃO (MUITO IMPORTANTE):\n"
-            "Com base nos resultados e dados das partidas fornecidos abaixo, monte para cada jogo finalizado um painel de "
-            "verificação mostrando quais dos mercados padrão seriam classificados como GREEN 🟢 ou RED 🔴.\n"
-            "Exemplos de auditoria que você deve fazer:\n"
-            "- Se a soma de gols da partida for maior que 2.5: Over 2.5 Gols -> GREEN 🟢 (caso contrário: RED 🔴)\n"
-            "- Se ambos os times marcaram gols (placar ex: 2-1, 1-1): Ambas Marcam Sim -> GREEN 🟢 (caso contrário: RED 🔴)\n"
-            "- Se a soma dos escanteios for maior ou igual a 10: Over 9.5 Escanteios -> GREEN 🟢 (caso contrário: RED 🔴)\n"
-            "- Se a soma de cartões amarelos for maior ou igual a 5: Over 4.5 Cartões -> GREEN 🟢 (caso contrário: RED 🔴)\n\n"
+            "altamente profissional, técnico e ultra-resumido para a nossa comunidade de investimentos esportivos.\n\n"
+            
+            "INSTRUÇÃO DE CONTEÚDO COMPACTO (MUITO IMPORTANTE):\n"
+            "Você deve incluir todas as informações estatísticas e de auditoria de Greens/Reds de cada partida concluída, "
+            "mas de forma extremamente sintetizada e curta para ocupar o menor espaço vertical possível no celular.\n"
+            "Use rigorosamente esta estrutura enxuta de 3 linhas por partida para consolidar tudo:\n\n"
+            "⚽ [Time Casa Traduzido] [Gols Casa] - [Gols Fora] [Time Fora Traduzido]\n"
+            "📐 Cantos: [Casa]v[Fora] | 🟨 Cartões: [Casa]v[Fora] | ⚡ Faltas: [Casa]v[Fora]\n"
+            "🟢 Over 2.5 Gols: [GREEN ou RED] | Ambas Marcam: [GREEN ou RED] | Over 9.5 Cantos: [GREEN ou RED] | Over 4.5 Cartões: [GREEN ou RED]\n"
+            "──────────────────────\n\n"
+            
+            "INSTRUÇÕES DE AUDITORIA:\n"
+            "Com base nos dados reais fornecidos abaixo, classifique cada um dos 4 mercados acima de forma exata:\n"
+            "- Over 2.5 Gols -> GREEN 🟢 se a soma de gols for maior que 2.5 (caso contrário RED 🔴)\n"
+            "- Ambas Marcam -> GREEN 🟢 se ambos os times marcaram gols (caso contrário RED 🔴)\n"
+            "- Over 9.5 Cantos -> GREEN 🟢 se a soma de escanteios for maior ou igual a 10 (caso contrário RED 🔴)\n"
+            "- Over 4.5 Cartões -> GREEN 🟢 se a soma de cartões amarelos for maior ou igual a 5 (caso contrário RED 🔴)\n\n"
+            
             "INSTRUÇÕES DE FORMATAÇÃO E TRADUÇÃO:\n"
-            "1. Agrupe as partidas por campeonato, listando o placar e as estatísticas de cada time (Gols, Escanteios, Cartões, Faltas).\n"
+            "1. Agrupe as partidas por campeonato escrevendo o nome do campeonato acima de cada bloco de jogos.\n"
             "2. Traduza os nomes de todos os times, países e ligas para o Português do Brasil.\n"
-            "3. Escreva uma análise curta no final destacando como foi o rendimento estatístico de hoje de forma geral.\n"
+            "3. Escreva um parágrafo curtíssimo de fechamento e motivação no final (máximo 2 linhas).\n"
             "4. NÃO use asteriscos (*) em nenhuma parte da mensagem.\n"
             "5. Use emojis moderados e quebras de linha elegantes para organizar as seções de forma que seja agradável.\n\n"
             f"Dados consolidados das partidas de hoje:\n{dados_recap}"
         )
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
         return response.text
     except Exception as e:
         print(f"Erro ao gerar resumo diário avançado via IA: {e}")
@@ -359,6 +387,11 @@ def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
         return "Erro ao construir o cronograma diário de partidas."
 
 def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
+    """
+    Gera o dossiê avançado de análise estatística 'VAR do Lucro' com as estatísticas 
+    principais e o novo painel dinâmico 'Criar Aposta (Bet365)' sem usar asteriscos.
+    Realiza investigações em tempo real sobre elenco provável, clima tático e arbitragem.
+    """
     try:
         client = obter_cliente_gemini()
         liga = fixture["league"]["name"]
@@ -367,31 +400,41 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
         
         prompt = (
             f"Você é a IA analista-chefe da cabine do 'VAR do Lucro', especialista em Engenharia de Prompt e Modelagem Estatística Avançada para apostas esportivas de valor (+EV).\n"
-            f"Sua missão é realizar uma análise estatística pré-jogo em tempo real (exatamente 1 hora antes do início, considerando desfalques e escalações confirmadas de última hora de hoje) para o confronto: {time_casa} vs {time_fora} pela liga '{liga}'.\n\n"
+            f"Sua missão é realizar uma análise estatística pré-jogo em tempo real (exatamente 1 hora antes do início de hoje) para o confronto: {time_casa} vs {time_fora} pela liga '{liga}'.\n\n"
             
-            "REGRAS DE ANÁLISE MATEMÁTICA (Use a pesquisa do Google em tempo real para obter dados de odds atuais, xG recente das equipes, árbitro escalado e desfalques):\n"
-            "1. MODELAGEM DE GOLS: Cruze as projeções de xG gerado e concedido recente dos dois times. Identifique tendências ou anomalias estruturais.\n"
-            "2. CÁLCULO DE PROBABILIDADE E +EV: Converta as odds médias reais atuais das casas para probabilidade implícita (Probabilidade = 1 / odd). Calcule a sua própria probabilidade real baseada na força dos elencos, desfalques de última hora e histórico. Se a sua probabilidade for maior que a da casa, você encontrou Valor Esperado Positivo (+EV). Indique este mercado.\n"
-            "3. LINHAS SECUNDÁRIAS: Cruze o comportamento agressivo (média de faltas dos times) com o rigor histórico do árbitro escalado para projetar os cartões. Cruze o volume de APM (Ataques Perigosos por Minuto) com a média recente de escanteios das equipes.\n\n"
+            "REGRAS DE ANÁLISE TÁTICA E INVESTIGAÇÃO (Use a pesquisa do Google em tempo real para obter os dados de hoje):\n"
+            "1. ARBITRAGEM COMPLETA: Pesquise quem é o juiz principal e os assistentes (bandeirinhas). Cruze o comportamento agressivo (média de faltas e cartões das equipes) com o rigor do árbitro escalado.\n"
+            "2. TEMPERATURA E CLIMA: Verifique as condições climáticas e temperatura no estádio. Explique resumidamente como isso influencia no ritmo de jogo (campo molhado/pesado, altitude, cansaço, etc.).\n"
+            "3. PSICOLÓGICO E CLIMA INTERNO: Pesquise sobre a motivação atual das equipes, notícias de vestiário, pressão interna de torcedores, desfalques ou retorno de astros importantes.\n"
+            "4. CÁLCULO DE PROBABILIDADE E +EV: Converta as odds médias reais atuais das casas para probabilidade implícita (Probabilidade = 1 / odd). Calcule a sua própria probabilidade real com base no xG recente para encontrar a aposta de maior valor esperado positivo (+EV).\n"
+            "5. CRIAR APOSTA (ESTILO BET365): Crie uma seção especial sugerindo uma aposta combinada personalizada de micro-mercados que os apostadores possam preencher usando a ferramenta 'Criar Aposta' da Bet365, com base nos jogadores titulares prováveis e tendências da partida.\n\n"
             
             "REGRAS RÍGIDAS DE FORMATAÇÃO E TRADUÇÃO:\n"
-            "- NÃO use asteriscos (*) em nenhuma parte da resposta final (substitua por traços ou outros emojis para manter o visual limpo).\n"
+            "- NÃO use asteriscos (*) em nenhuma parte da resposta final (substitua por traços ou emojis para manter o visual limpo).\n"
             "- Traduza obrigatoriamente todos os nomes de times, países e ligas para o Português do Brasil no relatório final.\n"
-            "- Seja estritamente direto, objetivo e resumido, entregando as informações exatamente seguindo este modelo de resposta de alta fidelidade visual:\n\n"
+            "- Seja estritamente direto e resumido, entregando as informações exatamente seguindo este modelo de resposta:\n\n"
             
             "🔍 RELATÓRIO MATEMÁTICO - VAR DO LUCRO\n"
             f"⚽ [Nome do Time Casa Traduzido] vs [Nome do Time Fora Traduzido]\n"
             f"🏆 [Nome da Liga Traduzido] (28/06/2026)\n\n"
             
-            "- Resultado (1X2 ou Handicap): [Indicação do mercado exato de resultado / handicap] (Probabilidade calculada pelo VAR: [X]% | Odd da casa: [X] | Implicada: [X]%)\n\n"
-            "- Gols (Over/Under e BTTS): [Linha sugerida baseada em xG] (Projeção de xG combinado: [X] gols | Probabilidade VAR: [X]% | Odd da casa: [X])\n\n"
-            "- Escanteios: [Linha sugerida de cantos] (Média projetada combinada: [X] cantos | Justificativa ultra-curta)\n\n"
-            "- Cartões / Faltas: [Linha sugerida de cartões] (Média de faltas: [X] | Árbitro escalado: [Nome do árbitro] com média de [X] cartões/jogo | Justificativa ultra-curta)\n\n"
-            "- Aposta de Maior Valor (+EV): [Mercado específico desajustado pelas casas]\n"
+            "- Resultado (1X2 ou Handicap): [Mercado sugerido] (Probabilidade VAR: [X]% | Odd da casa: [X] | Implicada: [X]%)\n\n"
+            "- Gols (Over/Under e BTTS): [Linha sugerida] (Projeção xG: [X] gols | Probabilidade VAR: [X]% | Odd da casa: [X])\n\n"
+            "- Escanteios: [Linha sugerida] (Média combinada: [X] cantos | Justificativa curta baseada em volume de ataque)\n\n"
+            "- Cartões / Faltas: [Linha sugerida de cartões] (Média de faltas projetada: [X] | Equipe de arbitragem: Árbitro principal [Nome] com média de [X] cartões, bandeirinhas [Nomes] | Justificativa curta de comportamento)\n\n"
+            "- Clima, Temperatura e Torcida: [Análise curta de como a temperatura/campo pesado e a pressão do público no estádio influenciarão no andamento da partida]\n\n"
+            "- Psicológico e Vestiário: [Análise rápida do clima de vestiário, união das equipes e motivação de última hora]\n\n"
+            "- Aposta de Maior Valor (+EV): [Mercado específico desajustado]\n"
             "  • Odd da casa: [X] (Probabilidade implícita: [X]%)\n"
             "  • Probabilidade real calculada pelo VAR: [X]%\n"
             "  • Valor Esperado (+EV): [X]%\n"
-            "  • Critério de Kelly Recomendado: [X]% da banca (Sugerir stake fracionária segura de 1% a 3% para proteção da banca)\n\n"
+            "  • Critério de Kelly Recomendado: [X]% da banca (Sugerir stake fracionária segura de 1% a 3%)\n\n"
+            "🛠️ CRIAR APOSTA SUGERIDO (ESTILO BET365):\n"
+            "• Escanteios: [Time Casa] mais de [X] cantos (Odd: [X]) | [Time Fora] mais de [X] cantos (Odd: [X])\n"
+            "• Chutes ao Gol (Jogador): [Nome de um jogador específico provável] com mais de 0.5 chutes no alvo (Odd: [X])\n"
+            "• Gols 1º Tempo: Mais de 0.5 gols no primeiro tempo (Odd: [X])\n"
+            "• Escanteios 1º Tempo: Mais de 3.5 escanteios no primeiro tempo (Odd: [X])\n"
+            "• Total do Criar Aposta Combinado: Odd combinada estimada @[X]\n\n"
             "👉 Aposta sugerida? Confira na sua Casa favorita! Jogue com responsabilidade 🔞"
         )
 
