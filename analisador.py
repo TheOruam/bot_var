@@ -119,6 +119,7 @@ def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
     hoje_brt = agora_brt.strftime('%Y-%m-%d')
     
+    # Se já temos os jogos do dia carregados e consolidados em cache, retorna diretamente
     if hoje_brt == ULTIMA_CARGA_JOGOS and JOGOS_DO_DIA_RAW_CACHE:
         jogos_filtrados = [
             jogo for jogo in todos_jogos 
@@ -544,27 +545,35 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
     ]
     casa_sugerida_1, link_1 = random.choice(casas_sugestoes)
     
-    # Formatação visual enxuta em blocos verticais compactos
+    # Formatação visual enxuta em blocos verticais compactos (Sem colchetes para evitar erro de Markdown) [6]
     mensagem_final = (
         "💎 [Sinal Confirmado - VAR do Lucro PREMIUM]\\n\\n"
-        f"🏟 {liga}\\n"
+        f"🏟 {liga}\n"
         f"⚽ {time_casa} v {time_fora}\n"
         f"🕐 {tempo_minutos} minutos\n"
         f"🔢 Placar do jogo: {gols_casa} - {gols_fora}\n\n"
-        "📊 Dados do jogo (Mandante - Visitante):\\n\\n"
-        f"⚡ Investidas ofensivas: {stats_parsed['home']['attacks']} - {stats_parsed['away']['attacks']}\\n"
-        f"[ {barra_ataques} ]\\n\\n"
-        f"📐 Escanteios: {stats_parsed['home']['corners']} - {stats_parsed['away']['corners']}\\n"
-        f"[ {barra_cantos} ]\\n\\n"
-        f"👟 Arremates: {stats_parsed['home']['shots']} - {stats_parsed['away']['shots']}\\n"
-        f"[ {barra_chutes} ]\\n\\n"
-        f"🎯 Tentativas no alvo: {stats_parsed['home']['on_target']} - {stats_parsed['away']['on_target']}\\n"
-        f"[ {barra_alvo} ]\\n\\n"
-        f"📈 Controle da bola: {stats_parsed['home']['possession']}% - {stats_parsed['away']['possession']}%\\n"
-        f"[ {barra_posse} ]\\n\\n"
-        f"🔥 Sinal: {sinal}\\n\\n"
-        "↪ Confira nas casas:\\n"
-        f"🎲 Pegue na [{casa_sugerida_1}]({link_1})\\n\\n"
+        
+        "📊 Dados do jogo (Mandante - Visitante):\n\n"
+        
+        f"⚡ Investidas ofensivas: {stats_parsed['home']['attacks']} - {stats_parsed['away']['attacks']}\n"
+        f"{barra_ataques}\n\n"
+        
+        f"📐 Escanteios: {stats_parsed['home']['corners']} - {stats_parsed['away']['corners']}\n"
+        f"{barra_cantos}\n\n"
+        
+        f"👟 Arremates: {stats_parsed['home']['shots']} - {stats_parsed['away']['shots']}\n"
+        f"{barra_chutes}\n\n"
+        
+        f"🎯 Tentativas no alvo: {stats_parsed['home']['on_target']} - {stats_parsed['away']['on_target']}\n"
+        f"{barra_alvo}\n\n"
+        
+        f"📈 Controle da bola: {stats_parsed['home']['possession']}% - {stats_parsed['away']['possession']}%\n"
+        f"{barra_posse}\n\n"
+        
+        f"🔥 Sinal: {sinal}\n\n"
+        
+        "↪ Confira nas casas:\n"
+        f"🎲 Pegue na [{casa_sugerida_1}]({link_1})\n\n"
         "Jogue com responsabilidade 🔞"
     )
 
