@@ -2,6 +2,7 @@
 import os
 import random
 import requests
+import time
 from telebot import TeleBot
 from deep_translator import GoogleTranslator
 from analisador import buscar_jogo_ao_vivo_por_time, analisar_ao_vivo_e_formatar, obter_jogos_do_dia, gerar_relatorio_pre_jogo, obter_cliente_gemini, buscar_time_por_nome
@@ -11,6 +12,9 @@ ID_PRE_JOGO = int(os.getenv("TOPICO_PRE_JOGO", "0"))
 ID_AO_VIVO = int(os.getenv("TOPICO_AO_VIVO", "0"))
 ID_RESENHA = int(os.getenv("TOPICO_RESENHA", "0"))
 ID_ADMINS = int(os.getenv("TOPICO_ADMINS", "0"))
+
+# Guarda o cronômetro do comando supremo de recache em memória
+ULTIMO_RECACHE_TIME = 0.0
 
 def eh_admin(bot: TeleBot, message) -> bool:
     """Verifica se o remetente é administrador do grupo."""
@@ -52,7 +56,7 @@ def gerar_texto_interativo_ia(prompt: str) -> str:
         )
         return response.text.strip()
     except Exception as e:
-        print(f"Erro ao gerar texto interativo com a IA: {e}")
+        print(f"Erro ao gerar text interativo com a IA: {e}")
         return "Erro temporário de conexão com a cabine do VAR. Tente novamente em instantes."
 
 def registrar_comandos(bot: TeleBot):
@@ -83,7 +87,8 @@ def registrar_comandos(bot: TeleBot):
                 "• /scan: Força a varredura de jogos para a proxima hora imediatamente.\n"
                 "• /cronograma: Forca a geracao e envio da tabela de jogos de hoje para a sala Pre-Jogo.\n"
                 "• /painel <time>: Abre o painel visual com graficos e elenco do time.\n"
-                "• /resumo: Coleta placares e estatísticas de hoje e gera um balanço de fechamento com Greens."
+                "• /resumo: Coleta placares e estatísticas de hoje e gera um balanço de fechamento com Greens.\n"
+                "• /recache: Força o bot a buscar dados atualizados na API (Dono apenas)."
             )
             bot.send_message(
                 chat_id=message.chat.id, 
@@ -145,7 +150,26 @@ def registrar_comandos(bot: TeleBot):
             message_thread_id=message.message_thread_id
         )
         relatorio = gerar_relatorio_pre_jogo(jogo_encontrado)
-        bot.send_message(chat_id=message.chat.id, text=relatorio, message_thread_id=message.message_thread_id)
+        
+        # SISTEMA DE SEGURANÇA CONTRA MENSAGENS LONGAS (FATIADOR DE CARACTERE) [1]
+        limite_telegram = 4000
+        if len(relatorio) <= limite_telegram:
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=relatorio, 
+                message_thread_id=message.message_thread_id
+            )
+        else:
+            # Fatia a resposta do Gemini em blocos menores para o Telegram aceitar [1]
+            tamanho_fatia = 3900
+            partes = [relatorio[i:i+tamanho_fatia] for i in range(0, len(relatorio), tamanho_fatia)]
+            for idx, parte in enumerate(partes):
+                bot.send_message(
+                    chat_id=message.chat.id,
+                    text=f"📋 [Análise - Parte {idx+1}/{len(partes)}]\n\n{parte}",
+                    message_thread_id=message.message_thread_id
+                )
+                time.sleep(1) # Pausa de 1 segundo de segurança
 
     # =====================================================================
     # COMANDO: AO VIVO (APENAS NA SALA SINAIS AO VIVO)
@@ -193,7 +217,7 @@ def registrar_comandos(bot: TeleBot):
     # =====================================================================
     # COMANDOS DE ADMINS - GRUPO 1: APENAS NA "MESA DOS ADMINS"
     # =====================================================================
-    @bot.message_handler(commands=['update', 'addliga', 'remliga', 'verligas', 'ids', 'scan', 'cronograma', 'painel', 'resumo'])
+    @bot.message_handler(commands=['update', 'addliga', 'remliga', 'verligas', 'ids', 'scan', 'cronograma', 'painel', 'resumo', 'recache'])
     def comandos_criticos_admin(message):
         if not eh_admin(bot, message):
             bot.reply_to(message, "⚠️ Apenas administradores podem usar este comando.")
@@ -377,6 +401,44 @@ def registrar_comandos(bot: TeleBot):
                     text="ℹ️ Nenhuma partida registrada hoje nas ligas monitoradas para gerar o fechamento.",
                     message_thread_id=message.message_thread_id
                 )
+
+        elif comando == 'recache':
+            dono_id = int(os.getenv("DONO_TELEGRAM_ID", "0"))
+            if message.from_user.id != dono_id:
+                bot.reply_to(message, "⚠️ Comando restrito exclusivamente ao criador do bot.")
+                return
+                
+            global ULTIMO_RECACHE_TIME
+            tempo_decorrido = time.time() - ULTIMO_RECACHE_TIME
+            cooldown_segundos = 900  # 15 minutos de proteção contra suspensão
+            
+            if tempo_decorrido < cooldown_segundos:
+                minutos_restantes = round((cooldown_segundos - tempo_decorrido) / 60, 1)
+                bot.reply_to(
+                    message, 
+                    f"⚠️ O comando /recache esta em cooldown de segurança para proteger a sua API contra suspensões.\n"
+                    f"Tente novamente em {minutos_restantes} minutos."
+                )
+                return
+                
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text="🔄 Forçando consulta na API-Football e reconstruindo o cache diário de jogos...",
+                message_thread_id=message.message_thread_id
+            )
+            
+            from analisador import forcar_atualizacao_cache
+            resultado = forcar_atualizacao_cache()
+            
+            # Atualiza o cronômetro do cooldown apenas se a chamada deu certo
+            if "sucesso" in resultado.lower():
+                ULTIMO_RECACHE_TIME = time.time()
+                
+            bot.send_message(
+                chat_id=message.chat.id, 
+                text=resultado,
+                message_thread_id=message.message_thread_id
+            )
 
         elif comando == 'painel':
             nome_time = message.text.replace('/painel', '').strip()
