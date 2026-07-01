@@ -9,13 +9,12 @@ from google.genai import types
 from google.genai.errors import APIError
 from typing import Optional, Dict, Any, List
 
-# Configurações globais
 API_FOOTBALL_URL_DIRECT = "https://v3.football.api-sports.io"
 API_FOOTBALL_URL_RAPID = "https://api-football-v1.p.rapidapi.com/v3"
 
 # SISTEMA DE CACHE BRUTO DIÁRIO (ECONOMIA DE COTA + FILTRO DINÂMICO IMEDIATO)
 LIGAS_MONITORADAS = [71, 72, 73, 1, 39, 140, 2]
-JOGOS_DO_DIA_RAW_CACHE = []  # Guarda todos os jogos do mundo hoje sem filtro
+JOGOS_DO_DIA_RAW_CACHE = []  # Guarda todos os jogos de hoje ajustados ao fuso de Brasília
 ULTIMA_CARGA_JOGOS = ""      # Guarda a data da última requisição real (ex: "2026-06-30")
 JOGOS_ANALISADOS = set()
 ALERTAS_ENVIADOS = set()
@@ -105,32 +104,104 @@ def fazer_requisicao_api(endpoint: str) -> Dict[str, Any]:
 
 def obter_jogos_do_dia() -> List[Dict[str, Any]]:
     """
-    Busca todas as partidas do dia no planeta e aplica o filtro de ligas monitoradas
-    dinamicamente. Garante que atualizações de ligas pelo chat surtam efeito imediato.
+    Busca as partidas de hoje e amanhã no planeta e filtra localmente baseado no 
+    Horário de Brasília (UTC-3), corrigindo o 'Bug da Meia-noite' de jogos tardios.
     """
     global JOGOS_DO_DIA_RAW_CACHE, ULTIMA_CARGA_JOGOS
     
     agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
     hoje_brt = agora_brt.strftime('%Y-%m-%d')
     
-    # Se ainda não buscamos a lista de hoje, faz a chamada real à API (1 vez por dia)
-    if hoje_brt != ULTIMA_CARGA_JOGOS or not JOGOS_DO_DIA_RAW_CACHE:
-        print(f"[Cache API] Realizando consulta real na API-Football para a data {hoje_brt}...")
-        dados = fazer_requisicao_api(f"fixtures?date={hoje_brt}")
-        todos_jogos = dados.get("response", [])
+    # Se já temos os jogos do dia carregados e consolidados em cache, retorna diretamente
+    if hoje_brt == ULTIMA_CARGA_JOGOS and JOGOS_DO_DIA_RAW_CACHE:
+        jogos_filtrados = [
+            jogo for jogo in JOGOS_DO_DIA_RAW_CACHE 
+            if jogo["league"]["id"] in LIGAS_MONITORADAS
+        ]
+        return jogos_filtrados
+    
+    print(f"[Cache API] Novo dia detectado. Consultando dados de hoje ({hoje_brt}) e de amanhã...")
+    
+    # Calcula o dia de amanhã BRT de forma segura
+    amanha_brt = (agora_brt + timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    # Busca partidas de hoje e de amanhã na API (Gasta apenas 2 requisições por dia)
+    dados_hoje = fazer_requisicao_api(f"fixtures?date={hoje_brt}")
+    dados_amanha = fazer_requisicao_api(f"fixtures?date={amanha_brt}")
+    
+    todos_jogos_crus = dados_hoje.get("response", []) + dados_amanha.get("response", [])
+    
+    # Filtro de Fuso Horário de Brasília (UTC-3)
+    jogos_consolidados_hoje = []
+    for jogo in todos_jogos_crus:
+        data_utc_str = jogo["fixture"]["date"]
+        # Trata formatos com Z ou offset nulo
+        data_utc = datetime.fromisoformat(data_utc_str.replace("Z", "+00:00"))
         
-        if todos_jogos:
-            JOGOS_DO_DIA_RAW_CACHE = todos_jogos
-            ULTIMA_CARGA_JOGOS = hoje_brt
+        # Converte a hora de início do jogo para Brasília
+        data_jogo_brt = data_utc - timedelta(hours=3)
+        
+        # Se a data de início em Brasília for exatamente hoje, o jogo pertence ao dia de hoje!
+        if data_jogo_brt.strftime('%Y-%m-%d') == hoje_brt:
+            jogos_consolidados_hoje.append(jogo)
             
-    # Aplica o filtro de ligas monitoradas dinamicamente na lista bruta em cache
+    # Salva em cache os jogos consolidados para o dia de hoje
+    if todos_jogos_crus:
+        JOGOS_DO_DIA_RAW_CACHE = jogos_consolidados_hoje
+        ULTIMA_CARGA_JOGOS = hoje_brt
+
+    # Filtra pelas ligas monitoradas dinamicamente
     jogos_filtrados = [
         jogo for jogo in JOGOS_DO_DIA_RAW_CACHE 
         if jogo["league"]["id"] in LIGAS_MONITORADAS
     ]
     
-    print(f"Data BRT: {hoje_brt} | Total jogos mundo em cache: {len(JOGOS_DO_DIA_RAW_CACHE)} | Filtrados ativos: {len(jogos_filtrados)}")
+    print(f"Balanço: Total jogos brutos do fuso de Brasília hoje: {len(JOGOS_DO_DIA_RAW_CACHE)} | Ativos filtrados: {len(jogos_filtrados)}")
     return jogos_filtrados
+
+def forcar_atualizacao_cache() -> str:
+    """
+    Função de uso exclusivo do Dono. Força uma consulta real na API-Football,
+    ignorando o cache existente, e reconstrói o banco de dados local bruto.
+    """
+    global JOGOS_DO_DIA_RAW_CACHE, ULTIMA_CARGA_JOGOS
+    
+    agora_brt = datetime.now(timezone.utc) - timedelta(hours=3)
+    hoje_brt = agora_brt.strftime('%Y-%m-%d')
+    amanha_brt = (agora_brt + timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    print(f"[Forçar Cache] Consultando dados atualizados de hoje e amanhã na API-Football...")
+    dados_hoje = fazer_requisicao_api(f"fixtures?date={hoje_brt}")
+    dados_amanha = fazer_requisicao_api(f"fixtures?date={amanha_brt}")
+    
+    todos_jogos_crus = dados_hoje.get("response", []) + dados_amanha.get("response", [])
+    
+    is_erro = ("response" not in dados_hoje or dados_hoje.get("errors")) and ("response" not in dados_amanha or dados_amanha.get("errors"))
+    if is_erro:
+        return "❌ Falha ao forçar o cache na API de futebol. Verifique os limites e chaves."
+        
+    jogos_consolidados_hoje = []
+    for jogo in todos_jogos_crus:
+        data_utc_str = jogo["fixture"]["date"]
+        data_utc = datetime.fromisoformat(data_utc_str.replace("Z", "+00:00"))
+        data_jogo_brt = data_utc - timedelta(hours=3)
+        if data_jogo_brt.strftime('%Y-%m-%d') == hoje_brt:
+            jogos_consolidados_hoje.append(jogo)
+            
+    # Atualiza as variáveis de cache em memória
+    JOGOS_DO_DIA_RAW_CACHE = jogos_consolidados_hoje
+    ULTIMA_CARGA_JOGOS = hoje_brt
+    
+    jogos_filtrados = [
+        jogo for jogo in JOGOS_DO_DIA_RAW_CACHE 
+        if jogo["league"]["id"] in LIGAS_MONITORADAS
+    ]
+    
+    return (
+        f"✅ Cache de jogos de hoje reconstruído com sucesso!\n"
+        f"• Total de partidas no mundo no fuso de Brasília hoje: {len(JOGOS_DO_DIA_RAW_CACHE)}\n"
+        f"• Partidas ativas filtradas para o VAR: {len(jogos_filtrados)}"
+    )
 
 def obter_dados_recap_dia() -> List[Dict[str, Any]]:
     jogos = obter_jogos_do_dia()
@@ -159,7 +230,6 @@ def obter_dados_recap_dia() -> List[Dict[str, Any]]:
                 dados_stats = fazer_requisicao_api(f"fixtures/statistics?fixture={fixture_id}")
                 stats_response = dados_stats.get("response", [])
                 
-                # [Anti-Abuso de Cota] Pausa de 3 segundos para evitar banimento por excesso de requisições por minuto (10 RPM)
                 time.sleep(3)
                 
                 for team_stat in stats_response:
@@ -251,6 +321,7 @@ def gerar_cronograma_diario_ia(jogos: List[Dict[str, Any]]) -> str:
         
         lista_resumida = []
         for jogo in jogos:
+            # Captura o estádio de forma totalmente segura e blindada contra "NoneType" da API
             venue_dict = jogo["fixture"].get("venue")
             venue_name = ""
             city_name = ""
@@ -312,7 +383,7 @@ def gerar_relatorio_pre_jogo(fixture: Dict[str, Any]) -> str:
             "REGRAS RÍGIDAS DE FORMATAÇÃO E TRADUÇÃO:\n"
             "- NÃO use asteriscos (*) em nenhuma parte da resposta final (substitua por traços ou outros emojis para manter o visual limpo).\n"
             "- Traduza obrigatoriamente todos os nomes de times, países e ligas para o Português do Brasil no relatório final.\n"
-            "- Seja estritamente direto, objective e resumido, entregando as informações exatamente seguindo este modelo de resposta de alta fidelidade visual:\n\n"
+            "- Seja estritamente direto, objetivo e resumido, entregando as informações exatamente seguindo este modelo de resposta de alta fidelidade visual:\n\n"
             
             "🔍 RELATÓRIO MATEMÁTICO - VAR DO LUCRO\n"
             f"⚽ [Nome do Time Casa Traduzido] vs [Nome do Time Fora Traduzido]\n"
@@ -463,13 +534,6 @@ def analisar_ao_vivo_e_formatar(dados_api: Dict[str, Any]) -> str:
 # =====================================================================
 # SEÇÃO 3: CONTROLE DE LIGAS, AGENDAMENTOS E CRONOGRAMAS
 # =====================================================================
-
-LIGAS_MONITORADAS = [71, 72, 73, 1, 39, 140, 2]
-JOGOS_DO_DIA_RAW_CACHE = []
-ULTIMA_CARGA_JOGOS = ""
-JOGOS_ANALISADOS = set()
-ALERTAS_ENVIADOS = set()
-ULTIMO_DIA_CRONOGRAMA = ""
 
 def adicionar_liga_monitorada(league_id: int) -> bool:
     global LIGAS_MONITORADAS
