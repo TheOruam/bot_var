@@ -14,7 +14,7 @@ API_FOOTBALL_URL_DIRECT = "https://v3.football.api-sports.io"
 API_FOOTBALL_URL_RAPID = "https://api-football-v1.p.rapidapi.com/v3"
 
 # SISTEMA DE CACHE BRUTO DIÁRIO (ECONOMIA DE COTA + FILTRO DINÂMICO IMEDIATO)
-LIGAS_MONITORADAS = [LIGAS_MONITORADAS = [71, 72, 73, 74, 13, 11, 2, 3, 15, 1, 39, 140, 135, 61, 94]]
+LIGAS_MONITORADAS = [71, 72, 73, 74, 13, 11, 2, 3, 15, 1, 39, 140, 135, 61, 94]
 JOGOS_DO_DIA_RAW_CACHE = []  # Guarda todos os jogos de hoje ajustados ao fuso de Brasília
 ULTIMA_CARGA_JOGOS = ""      # Guarda a data da última requisição real (ex: "2026-06-30")
 JOGOS_ANALISADOS = set()
